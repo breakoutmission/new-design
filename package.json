@@ -5,9 +5,12 @@
   "scripts": {
     "start": "node src/server.mjs",
     "start:fixture": "node src/server.mjs --fixture",
-    "test:browser": "node tests/browser/foundation.mjs",
+    "test:browser": "node tests/browser/foundation.mjs && node tests/browser/recovery.mjs",
+    "test:browser:foundation": "node tests/browser/foundation.mjs",
+    "test:browser:recovery": "node tests/browser/recovery.mjs",
     "test:browser:headed": "node tests/browser/foundation.mjs --headed",
     "test:browser:real": "node tests/browser/real-grove.mjs",
+    "test:browser:real:cancel": "node tests/browser/real-cancel.mjs",
     "test:browser:real:replay": "node tests/browser/real-grove.mjs --reuse-latest"
   },
   "dependencies": {

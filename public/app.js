@@ -8,6 +8,7 @@ const state = {
   mode: "preview",
   editor: null,
   editorProjectId: null,
+  activeGeneration: null,
 };
 
 const views = {
@@ -22,9 +23,18 @@ const generationPanel = document.querySelector("#generation-panel");
 const stageElement = generationPanel.querySelector('[data-testid="stage"]');
 const stageHistory = generationPanel.querySelector('[data-testid="stage-history"]');
 const logElement = document.querySelector("#technical-log");
+const generationMessage = document.querySelector("#generation-message");
+const cancelGenerationButton = document.querySelector("#cancel-generation");
+const retryGenerationButton = document.querySelector("#retry-generation");
+const confirmDialog = document.querySelector("#confirm-dialog");
+const confirmTitle = document.querySelector("#confirm-title");
+const confirmMessage = document.querySelector("#confirm-message");
+const confirmCancel = document.querySelector("#confirm-cancel");
+const confirmAccept = document.querySelector("#confirm-accept");
 const toast = document.querySelector("#toast");
 const workspaceMode = document.querySelector("#workspace-mode");
 const editToggle = document.querySelector("#edit-toggle");
+const regenerateButton = document.querySelector("#regenerate");
 const previewFrameShell = document.querySelector(".preview-frame-shell");
 const editorLayout = document.querySelector("#editor-layout");
 const editorContainer = document.querySelector("#gjs");
@@ -45,6 +55,9 @@ document
   .forEach((button) => button.addEventListener("click", showHome));
 source.addEventListener("input", updateSendState);
 sendButton.addEventListener("click", generatePresentation);
+cancelGenerationButton.addEventListener("click", cancelGeneration);
+retryGenerationButton.addEventListener("click", retryCurrentProject);
+regenerateButton.addEventListener("click", regenerateCurrentProject);
 editToggle.addEventListener("click", toggleEditorMode);
 undoButton.addEventListener("click", () => state.editor?.undo());
 redoButton.addEventListener("click", () => state.editor?.redo());
@@ -124,9 +137,17 @@ function renderProjects() {
         formatDate(project.updatedAt) +
         '</p></div><span class="project-status">' +
         escapeHtml(project.status) +
-        "</span>";
+        "</span>" +
+        '<button class="project-delete" type="button" aria-label="删除项目 ' +
+        escapeHtml(project.name) +
+        '">删除</button>';
       article.addEventListener("click", () => openProject(project.id));
+      article.querySelector(".project-delete").addEventListener("click", (event) => {
+        event.stopPropagation();
+        void deleteProject(project.id, project.name);
+      });
       article.addEventListener("keydown", (event) => {
+        if (event.target !== article) return;
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           openProject(project.id);
@@ -144,16 +165,30 @@ async function openProject(projectId) {
     return;
   }
   const project = await response.json();
-  openPreview(project);
+  if (project.status === "可编辑") {
+    openPreview(project);
+  } else {
+    showGenerationOutcome(project);
+  }
 }
 
 
 async function generatePresentation() {
   const material = source.value.trim();
   if (!material || !state.selectedTemplate) return;
+  if (state.activeGeneration) {
+    showToast("当前已有演示文稿正在生成，请等待完成或先取消。");
+    return;
+  }
 
+  const context = { projectId: null };
+  state.activeGeneration = context;
   sendButton.disabled = true;
   generationPanel.hidden = false;
+  generationMessage.textContent = "";
+  cancelGenerationButton.hidden = true;
+  cancelGenerationButton.disabled = false;
+  retryGenerationButton.hidden = true;
 
   state.currentProject = null;
   state.stageHistory = [];
@@ -171,30 +206,45 @@ async function generatePresentation() {
       throw new Error(payload.error || "生成请求没有成功启动。");
     }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    while (true) {
-      const { value, done } = await reader.read();
-      buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-      const lines = buffer.split(/\r?\n/);
-      buffer = lines.pop() || "";
-      for (const line of lines) consumeEvent(line);
-      if (done) break;
-    }
-    if (buffer.trim()) consumeEvent(buffer);
-    if (!state.currentProject) throw new Error("生成结束，但没有收到完整演示文稿。");
+    await readGenerationStream(response, context);
+    if (!state.currentProject) throw new Error("生成结束，但没有收到项目状态。");
   } catch (error) {
     appendLog(error.message);
-    showToast("生成失败");
+    showToast(error.message);
   } finally {
+    if (state.activeGeneration === context) state.activeGeneration = null;
+    cancelGenerationButton.hidden = true;
     sendButton.disabled = false;
   }
 }
 
-function consumeEvent(line) {
+async function readGenerationStream(response, context) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() || "";
+    for (const line of lines) consumeEvent(line, context);
+    if (done) break;
+  }
+  if (buffer.trim()) consumeEvent(buffer, context);
+}
+
+function consumeEvent(line, context) {
   if (!line.trim()) return;
   const event = JSON.parse(line);
+  if (["error", "canceled", "result"].includes(event.type) && state.activeGeneration === context) {
+    state.activeGeneration = null;
+  }
+  if (event.type === "project") {
+    context.projectId = event.project.id;
+    state.currentProject = event.project;
+    generationMessage.textContent = "生成运行时可以返回首页处理其他可编辑项目。";
+    cancelGenerationButton.hidden = false;
+  }
   if (event.type === "stage") {
     stageElement.textContent = event.stage;
     state.stageHistory.push(event.stage);
@@ -204,8 +254,143 @@ function consumeEvent(line) {
   }
   if (event.type === "log") appendLog(event.message);
   if (event.type === "usage") appendLog("Codex 用量：" + JSON.stringify(event.usage));
-  if (event.type === "error") throw new Error(event.message);
-  if (event.type === "result") openPreview(event.project);
+  if (event.type === "error") {
+    appendLog(event.message);
+    if (isViewingGenerationProject(event.project.id)) {
+      showGenerationOutcome(event.project);
+    } else {
+      void loadProjects();
+    }
+    showToast("生成失败");
+  }
+  if (event.type === "canceled") {
+    if (isViewingGenerationProject(event.project.id)) {
+      showGenerationOutcome(event.project);
+    } else {
+      void loadProjects();
+      showToast(event.project.name + " 已取消");
+    }
+  }
+  if (event.type === "result") {
+    if (isViewingGenerationProject(event.project.id)) {
+      openPreview(event.project);
+    } else {
+      void loadProjects();
+      showToast(event.project.name + " 生成完成");
+    }
+  }
+}
+
+function isViewingGenerationProject(projectId) {
+  return !views.new.hidden && state.currentProject?.id === projectId;
+}
+
+async function cancelGeneration() {
+  const projectId = state.activeGeneration?.projectId || state.currentProject?.id;
+  if (!projectId) return;
+
+  cancelGenerationButton.disabled = true;
+  try {
+    const response = await fetch("/api/generations/" + encodeURIComponent(projectId) + "/cancel", {
+      method: "POST",
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "没有成功取消生成。");
+    showGenerationOutcome(payload);
+  } catch (error) {
+    appendLog(error.message);
+    showToast(error.message);
+  } finally {
+    cancelGenerationButton.disabled = false;
+  }
+}
+
+async function regenerateCurrentProject() {
+  const project = state.currentProject;
+  if (!project) return;
+  if (state.activeGeneration) {
+    showToast("当前已有演示文稿正在生成，请等待完成或先取消。");
+    return;
+  }
+
+  const confirmed = await askForConfirmation({
+    title: "重新生成并覆盖当前内容？",
+    message: "将复用原源材料和 " + project.templateName + " 模板，覆盖当前 HTML 和已有编辑。",
+    confirmLabel: "确认重新生成",
+  });
+  if (!confirmed) return;
+
+  await retryCurrentProject();
+}
+
+async function retryCurrentProject() {
+  const project = state.currentProject;
+  if (!project) return;
+  if (state.activeGeneration) {
+    showToast("当前已有演示文稿正在生成，请等待完成或先取消。");
+    return;
+  }
+
+  const context = { projectId: project.id };
+  state.activeGeneration = context;
+  sendButton.disabled = true;
+
+  try {
+    const response = await fetch("/api/projects/" + encodeURIComponent(project.id) + "/generations", {
+      method: "POST",
+    });
+    if (!response.ok || !response.body) {
+      const payload = await response.json();
+      throw new Error(payload.error || "重试没有成功启动。");
+    }
+
+    restoreProjectInputs(project);
+    generationPanel.hidden = false;
+    retryGenerationButton.hidden = true;
+    cancelGenerationButton.hidden = true;
+    cancelGenerationButton.disabled = false;
+    generationMessage.textContent = "";
+    stageElement.textContent = "正在准备材料";
+    state.stageHistory = [];
+    stageHistory.replaceChildren();
+    logElement.textContent = "";
+    showView("new");
+    resetEditor();
+    await readGenerationStream(response, context);
+  } catch (error) {
+    appendLog(error.message);
+    showToast(error.message);
+  } finally {
+    if (state.activeGeneration === context) state.activeGeneration = null;
+    cancelGenerationButton.hidden = true;
+    sendButton.disabled = false;
+  }
+}
+
+function restoreProjectInputs(project) {
+  source.value = project.source || "";
+  state.selectedTemplate = project.templateId;
+  document.querySelectorAll('input[name="template"]').forEach((radio) => {
+    radio.checked = radio.value === project.templateId;
+  });
+}
+
+function showGenerationOutcome(project) {
+  state.currentProject = project;
+  restoreProjectInputs(project);
+
+  generationPanel.hidden = false;
+  stageElement.textContent = project.status;
+  cancelGenerationButton.hidden = project.status !== "生成中";
+  retryGenerationButton.hidden = !["已取消", "生成失败"].includes(project.status);
+  generationMessage.textContent =
+    project.status === "已取消"
+      ? "生成已取消，源材料和演示模板已保留。"
+      : project.status === "生成失败"
+        ? project.error || "生成没有完成，源材料和演示模板已保留。"
+        : "生成正在运行，可以返回首页处理其他可编辑项目。";
+  updateSendState();
+  showView("new");
 }
 
 function openPreview(project) {
@@ -341,6 +526,56 @@ async function saveCurrentProject() {
   } finally {
     saveButton.disabled = state.mode !== "edit";
   }
+}
+
+async function deleteProject(projectId, projectName) {
+  const confirmed = await askForConfirmation({
+    title: "永久删除演示项目？",
+    message: "“" + projectName + "”将从本机永久删除，且无法恢复。",
+    confirmLabel: "永久删除",
+  });
+  if (!confirmed) return;
+
+  try {
+    const response = await fetch("/api/projects/" + encodeURIComponent(projectId), {
+      method: "DELETE",
+    });
+    if (!response.ok) {
+      const payload = await response.json();
+      throw new Error(payload.error || "项目没有删除成功。");
+    }
+    await loadProjects();
+    showToast("项目已永久删除");
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+function askForConfirmation({ title, message, confirmLabel }) {
+  confirmTitle.textContent = title;
+  confirmMessage.textContent = message;
+  confirmAccept.textContent = confirmLabel;
+  confirmDialog.showModal();
+
+  return new Promise((resolve) => {
+    const finish = (accepted) => {
+      confirmCancel.removeEventListener("click", onCancelClick);
+      confirmAccept.removeEventListener("click", onAcceptClick);
+      confirmDialog.removeEventListener("cancel", onDialogCancel);
+      if (confirmDialog.open) confirmDialog.close();
+      resolve(accepted);
+    };
+    const onCancelClick = () => finish(false);
+    const onAcceptClick = () => finish(true);
+    const onDialogCancel = (event) => {
+      event.preventDefault();
+      finish(false);
+    };
+
+    confirmCancel.addEventListener("click", onCancelClick);
+    confirmAccept.addEventListener("click", onAcceptClick);
+    confirmDialog.addEventListener("cancel", onDialogCancel);
+  });
 }
 
 function appendLog(message) {

@@ -2,7 +2,7 @@ import express from "express";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -11,6 +11,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publicDir = path.join(root, "public");
 const args = process.argv.slice(2);
 const fixturePath = path.resolve(readArg("--fixture-file") || path.join(root, "fixtures", "grove-deck.html"));
+const fixtureGeneratorPath = path.join(root, "fixtures", "fixture-generator.mjs");
 const templateDir = path.join(root, "templates", "grove");
 const port = Number(readArg("--port") || process.env.PORT || 4318);
 const dataDir = path.resolve(
@@ -21,6 +22,10 @@ const generatorMode = args.includes("--fixture")
   ? "fixture"
   : process.env.AI_PRESENTATION_GENERATOR || "codex";
 const shouldOpen = !args.includes("--no-open");
+
+let activeGeneration = null;
+let shuttingDown = false;
+const projectOperations = new Map();
 
 const app = express();
 app.disable("x-powered-by");
@@ -69,8 +74,44 @@ app.get("/api/projects/:id", async (req, res, next) => {
   }
 });
 
-app.patch("/api/projects/:id", async (req, res, next) => {
+app.delete("/api/projects/:id", async (req, res, next) => {
+  const operation = { type: "delete" };
   try {
+    if (activeGeneration?.projectId === req.params.id) {
+      res.status(409).json({ error: "请先取消这个项目的生成，再永久删除。" });
+      return;
+    }
+    if (!claimProjectOperation(req.params.id, operation)) {
+      res.status(409).json({ error: "这个项目正在执行其他操作，请稍后再试。" });
+      return;
+    }
+
+    const project = await readProject(req.params.id);
+    if (!project) {
+      res.status(404).json({ error: "没有找到这个演示项目。" });
+      return;
+    }
+    if (generatorMode === "fixture" && project.source.includes("[fixture:slow-delete]")) {
+      await delay(1200);
+    }
+
+    await unlink(projectPath(project.id));
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  } finally {
+    releaseProjectOperation(req.params.id, operation);
+  }
+});
+
+app.patch("/api/projects/:id", async (req, res, next) => {
+  const operation = { type: "save" };
+  try {
+    if (!claimProjectOperation(req.params.id, operation)) {
+      res.status(409).json({ error: "这个项目正在执行其他操作，请稍后再试。" });
+      return;
+    }
+
     const project = await readProject(req.params.id);
     if (!project) {
       res.status(404).json({ error: "没有找到这个演示项目。" });
@@ -94,6 +135,8 @@ app.patch("/api/projects/:id", async (req, res, next) => {
     res.json(project);
   } catch (error) {
     next(error);
+  } finally {
+    releaseProjectOperation(req.params.id, operation);
   }
 });
 
@@ -106,6 +149,10 @@ app.post("/api/generations", async (req, res) => {
   }
   if (!templateId) {
     res.status(400).json({ error: "请选择演示模板。" });
+    return;
+  }
+  if (activeGeneration) {
+    res.status(409).json({ error: "当前已有演示文稿正在生成，请等待完成或先取消。" });
     return;
   }
 
@@ -123,51 +170,81 @@ app.post("/api/generations", async (req, res) => {
     report: null,
     generation: { mode: generatorMode, events: [] },
   };
-
-  await writeProject(project);
-  res.status(200);
-  res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
-  res.setHeader("Cache-Control", "no-store");
-  res.flushHeaders();
-
-  const send = (event) => {
-    const stamped = { timestamp: new Date().toISOString(), ...event };
-    const recorded =
-      event.type === "result"
-        ? { timestamp: stamped.timestamp, type: "result", projectId: project.id }
-        : stamped;
-    project.generation.events.push(recorded);
-    if (!res.destroyed) res.write(JSON.stringify(stamped) + "\n");
-  };
-
+  const task = createGenerationTask(project.id);
+  claimProjectOperation(project.id, task);
+  activeGeneration = task;
   try {
-    send({ type: "stage", stage: "正在准备材料" });
-    await delay(generatorMode === "fixture" ? 60 : 0);
-    send({ type: "stage", stage: "正在生成演示文稿" });
-    const generated =
-      generatorMode === "fixture"
-        ? await readFile(fixturePath, "utf8")
-        : await generateWithCodex(source, send);
-
-    send({ type: "stage", stage: "正在检查 HTML" });
-    const { html, report } = preparePreviewHtml(generated);
-    project.status = "可编辑";
-    project.updatedAt = new Date().toISOString();
-    project.html = html;
-    project.report = report;
-    await writeProject(project);
-
-    send({ type: "stage", stage: "生成完成" });
-    await writeProject(project);
-    send({ type: "result", project });
+    await runGeneration(project, res, task);
   } catch (error) {
-    project.status = "生成失败";
+    releaseGenerationTask(task);
+    throw error;
+  }
+});
+
+app.post("/api/projects/:id/generations", async (req, res) => {
+  if (activeGeneration) {
+    res.status(409).json({ error: "当前已有演示文稿正在生成，请等待完成或先取消。" });
+    return;
+  }
+
+  const task = createGenerationTask(req.params.id);
+  if (!claimProjectOperation(req.params.id, task)) {
+    res.status(409).json({ error: "这个项目正在执行其他操作，请稍后再试。" });
+    return;
+  }
+  activeGeneration = task;
+  try {
+    const project = await readProject(req.params.id);
+    if (!project) {
+      releaseGenerationTask(task);
+      res.status(404).json({ error: "没有找到这个演示项目。" });
+      return;
+    }
+    if (!["可编辑", "生成失败", "已取消"].includes(project.status)) {
+      releaseGenerationTask(task);
+      res.status(409).json({ error: "这个项目当前不能重新生成。" });
+      return;
+    }
+
+    project.status = "生成中";
     project.updatedAt = new Date().toISOString();
-    project.error = userFacingError(error);
-    await writeProject(project);
-    send({ type: "error", message: project.error });
-  } finally {
-    res.end();
+    project.html = null;
+    project.report = null;
+    delete project.projectData;
+    delete project.error;
+    project.generation = {
+      mode: generatorMode,
+      events: [],
+      attempt: Number(project.generation?.attempt || 0),
+    };
+
+    await runGeneration(project, res, task);
+  } catch (error) {
+    releaseGenerationTask(task);
+    throw error;
+  }
+});
+
+app.post("/api/generations/:id/cancel", async (req, res, next) => {
+  try {
+    const task = activeGeneration;
+    if (!task || task.projectId !== req.params.id) {
+      res.status(409).json({ error: "这个项目当前没有正在运行的生成任务。" });
+      return;
+    }
+    if (!task.acceptingCancel) {
+      res.status(409).json({ error: "生成已经进入完成处理，不能再取消。" });
+      return;
+    }
+
+    task.acceptingCancel = false;
+    task.cancelRequested = true;
+    await terminateProcessTree(task.child);
+    await task.finished;
+    const project = await readProject(req.params.id);
+    res.json(project);
+  } catch (error) {
+    next(error);
   }
 });
 
@@ -188,7 +265,7 @@ const server = app.listen(port, "127.0.0.1", () => {
 });
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
-  process.on(signal, () => server.close(() => process.exit(0)));
+  process.on(signal, () => void shutdown());
 }
 
 function readArg(name) {
@@ -237,6 +314,213 @@ async function listProjects() {
       }) => summary,
     )
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+}
+
+function claimProjectOperation(projectId, operation) {
+  if (projectOperations.has(projectId)) return false;
+  projectOperations.set(projectId, operation);
+  return true;
+}
+
+function releaseProjectOperation(projectId, operation) {
+  if (projectOperations.get(projectId) === operation) projectOperations.delete(projectId);
+}
+
+function createGenerationTask(projectId) {
+  let finish;
+  const finished = new Promise((resolve) => {
+    finish = resolve;
+  });
+  return {
+    projectId,
+    child: null,
+    acceptingCancel: true,
+    cancelRequested: false,
+    finished,
+    finish,
+  };
+}
+
+function releaseGenerationTask(task) {
+  task.acceptingCancel = false;
+  if (activeGeneration === task) activeGeneration = null;
+  releaseProjectOperation(task.projectId, task);
+  task.finish();
+}
+
+async function runGeneration(project, res, task) {
+  project.generation.attempt = Number(project.generation.attempt || 0) + 1;
+  await writeProject(project);
+  res.status(200);
+  res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store");
+  res.flushHeaders();
+
+  const recordEvent = (event) => {
+    const stamped = { timestamp: new Date().toISOString(), ...event };
+    const recorded = event.project
+      ? {
+          timestamp: stamped.timestamp,
+          type: event.type,
+          projectId: event.project.id,
+          ...(event.message ? { message: event.message } : {}),
+        }
+      : stamped;
+    project.generation.events.push(recorded);
+    return { stamped, recorded };
+  };
+  const emitEvent = ({ stamped }) => {
+    if (!res.destroyed) res.write(JSON.stringify(stamped) + "\n");
+  };
+  const send = (event) => {
+    const entry = recordEvent(event);
+    emitEvent(entry);
+    return entry;
+  };
+  const discardEvents = (entries) => {
+    const discarded = new Set(entries.map((entry) => entry.recorded));
+    project.generation.events = project.generation.events.filter((event) => !discarded.has(event));
+  };
+
+  try {
+    send({ type: "project", project });
+    send({ type: "stage", stage: "正在准备材料" });
+    send({ type: "stage", stage: "正在生成演示文稿" });
+    const generated =
+      generatorMode === "fixture"
+        ? await generateWithFixture(project.source, project.generation.attempt, task)
+        : await generateWithCodex(project.source, send, task);
+
+    throwIfGenerationCanceled(task);
+
+    send({ type: "stage", stage: "正在检查 HTML" });
+    if (generatorMode === "fixture" && project.source.includes("[fixture:slow-finalize]")) {
+      await delay(1200);
+    }
+    throwIfGenerationCanceled(task);
+
+    const { html, report } = preparePreviewHtml(generated);
+    throwIfGenerationCanceled(task);
+    task.acceptingCancel = false;
+
+    project.status = "可编辑";
+    project.updatedAt = new Date().toISOString();
+    project.html = html;
+    project.report = report;
+    delete project.error;
+    const terminalEvents = [
+      recordEvent({ type: "stage", stage: "生成完成" }),
+      recordEvent({ type: "result", project }),
+    ];
+    try {
+      if (generatorMode === "fixture" && project.source.includes("[fixture:slow-commit]")) {
+        await delay(1200);
+      }
+      await writeProject(project);
+    } catch (error) {
+      discardEvents(terminalEvents);
+      throw error;
+    }
+    terminalEvents.forEach(emitEvent);
+  } catch (error) {
+    task.acceptingCancel = false;
+    project.updatedAt = new Date().toISOString();
+    project.html = null;
+    project.report = null;
+    delete project.projectData;
+
+    if (task.cancelRequested) {
+      project.status = "已取消";
+      delete project.error;
+      const terminalEvent = recordEvent({ type: "canceled", project });
+      await writeProject(project);
+      emitEvent(terminalEvent);
+    } else {
+      project.status = "生成失败";
+      project.error = userFacingError(error);
+      const terminalEvent = recordEvent({ type: "error", message: project.error, project });
+      await writeProject(project);
+      emitEvent(terminalEvent);
+    }
+  } finally {
+    releaseGenerationTask(task);
+    res.end();
+  }
+}
+
+function throwIfGenerationCanceled(task) {
+  if (task.cancelRequested) throw new Error("生成已取消。");
+}
+
+function registerGenerationChild(task, child) {
+  task.child = child;
+  if (task.cancelRequested) void terminateProcessTree(child);
+}
+
+async function terminateProcessTree(child) {
+  if (!child || child.exitCode !== null || child.signalCode) return;
+
+  if (process.platform !== "win32") {
+    child.kill("SIGTERM");
+    return;
+  }
+
+  await new Promise((resolve) => {
+    const killer = spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+      windowsHide: true,
+      stdio: "ignore",
+    });
+    killer.once("error", () => {
+      child.kill();
+      resolve();
+    });
+    killer.once("exit", (code) => {
+      if (code !== 0) child.kill();
+      resolve();
+    });
+  });
+}
+
+function generateWithFixture(source, attempt, task) {
+  const fixtureDelay = source.includes("[fixture:slow]") ? 5000 : 60;
+  const shouldFail =
+    source.includes("[fixture:fail]") ||
+    (source.includes("[fixture:fail-once]") && attempt === 1);
+  const childArgs = [
+    fixtureGeneratorPath,
+    "--file",
+    fixturePath,
+    "--delay",
+    String(fixtureDelay),
+    ...(shouldFail ? ["--fail"] : []),
+  ];
+  const child = spawn(process.execPath, childArgs, {
+    cwd: root,
+    env: process.env,
+    windowsHide: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  registerGenerationChild(task, child);
+
+  let stdout = "";
+  let stderr = "";
+  child.stdout.on("data", (chunk) => {
+    stdout += chunk.toString("utf8");
+  });
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk.toString("utf8");
+  });
+
+  return new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(stderr.trim() || "固定生成器没有成功返回演示文稿。"));
+      } else {
+        resolve(stdout);
+      }
+    });
+  });
 }
 
 function preparePreviewHtml(input) {
@@ -351,7 +635,7 @@ function countSlides(html) {
   ).length;
 }
 
-async function generateWithCodex(source, send) {
+async function generateWithCodex(source, send, task) {
   const skillPath = path.join(templateDir, "SKILL.md");
   const examplePath = path.join(templateDir, "example.html");
   if (!existsSync(skillPath) || !existsSync(examplePath)) {
@@ -379,6 +663,7 @@ async function generateWithCodex(source, send) {
     windowsHide: true,
     stdio: ["pipe", "pipe", "pipe"],
   });
+  registerGenerationChild(task, child);
 
   let stdoutBuffer = "";
   let stderrBuffer = "";
@@ -458,6 +743,22 @@ function buildCodexPrompt(source) {
     source,
     "</source-material>",
   ].join("\n");
+}
+
+async function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+
+  const task = activeGeneration;
+  if (task) {
+    if (task.acceptingCancel) {
+      task.acceptingCancel = false;
+      task.cancelRequested = true;
+      await terminateProcessTree(task.child);
+    }
+    await task.finished;
+  }
+  server.close(() => process.exit(0));
 }
 
 function openBrowser(url) {

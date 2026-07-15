@@ -60,6 +60,11 @@
             <h2 data-testid="stage">正在准备材料</h2>
           </div>
           <ol data-testid="stage-history" class="stage-history"></ol>
+          <div class="generation-actions">
+            <p id="generation-message"></p>
+            <button id="cancel-generation" type="button" hidden>取消生成</button>
+            <button id="retry-generation" type="button" hidden>重试</button>
+          </div>
           <details data-testid="technical-log">
             <summary>详细日志</summary>
             <pre id="technical-log"></pre>
@@ -85,6 +90,7 @@
             <button id="redo" type="button" disabled>重做</button>
             <button id="save" type="button" disabled>保存</button>
             <button id="edit-toggle" type="button">编辑</button>
+            <button id="regenerate" type="button">重新生成</button>
           </div>
         </div>
         <div class="preview-frame-shell">
@@ -116,6 +122,17 @@
       </section>
     </main>
 
+    <dialog id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+      <div class="confirm-dialog-content">
+        <p class="section-label">需要确认</p>
+        <h2 id="confirm-title"></h2>
+        <p id="confirm-message"></p>
+        <div class="confirm-dialog-actions">
+          <button id="confirm-cancel" type="button">取消</button>
+          <button id="confirm-accept" class="danger" type="button"></button>
+        </div>
+      </div>
+    </dialog>
     <div id="toast" role="status" aria-live="polite"></div>
     <script type="module" src="/app.js"></script>
   </body>

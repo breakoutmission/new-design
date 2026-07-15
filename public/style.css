@@ -114,6 +114,16 @@ button.wide { width: 100%; }
   font-size: 11px;
 }
 
+.project-delete {
+  grid-column: 2 / -1;
+  justify-self: end;
+  min-height: 34px;
+  padding: 0 10px;
+  color: var(--rust);
+  border-color: rgba(194, 85, 69, .45);
+  background: transparent;
+}
+
 .empty-state {
   min-height: 320px;
   margin-top: 34px;
@@ -216,6 +226,22 @@ textarea:focus {
   color: #4f5b53;
   line-height: 1.8;
 }
+.generation-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.generation-actions p {
+  flex: 1;
+  color: #4f5b53;
+  line-height: 1.6;
+}
+#cancel-generation {
+  color: white;
+  border-color: var(--rust);
+  background: var(--rust);
+}
 .generation-panel details {
   grid-column: 1 / -1;
   padding-top: 15px;
@@ -291,6 +317,30 @@ textarea:focus {
 }
 .gjs-one-bg { background-color: #20382a; }
 .gjs-two-color { color: #f8f6ed; }
+
+dialog {
+  width: min(520px, calc(100vw - 48px));
+  padding: 0;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  background: var(--paper);
+  box-shadow: 0 24px 80px rgba(24, 38, 29, .28);
+}
+dialog::backdrop { background: rgba(24, 38, 29, .56); }
+.confirm-dialog-content { padding: 30px; }
+.confirm-dialog-content h2 { margin-top: 10px; font-size: 30px; }
+#confirm-message { margin-top: 16px; color: #4f5b53; line-height: 1.7; }
+.confirm-dialog-actions {
+  margin-top: 28px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+button.danger {
+  color: white;
+  border-color: var(--rust);
+  background: var(--rust);
+}
 
 #toast {
   position: fixed;
