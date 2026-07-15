@@ -31,6 +31,7 @@ app.use((_req, res, next) => {
   next();
 });
 app.use(express.static(publicDir));
+app.use("/vendor/grapesjs", express.static(path.join(root, "node_modules", "grapesjs", "dist")));
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, generatorMode });
@@ -62,6 +63,34 @@ app.get("/api/projects/:id", async (req, res, next) => {
       res.status(404).json({ error: "没有找到这个演示项目。" });
       return;
     }
+    res.json(project);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/api/projects/:id", async (req, res, next) => {
+  try {
+    const project = await readProject(req.params.id);
+    if (!project) {
+      res.status(404).json({ error: "没有找到这个演示项目。" });
+      return;
+    }
+
+    const html = typeof req.body?.html === "string" ? req.body.html.trim() : "";
+    const projectData = req.body?.projectData;
+    if (!html || !projectData || typeof projectData !== "object" || Array.isArray(projectData)) {
+      res.status(400).json({ error: "保存内容不完整。" });
+      return;
+    }
+
+    const prepared = preparePreviewHtml(html);
+    project.html = prepared.html;
+    project.report = prepared.report;
+    project.projectData = projectData;
+    project.status = "可编辑";
+    project.updatedAt = new Date().toISOString();
+    await writeProject(project);
     res.json(project);
   } catch (error) {
     next(error);
@@ -198,7 +227,15 @@ async function listProjects() {
     files.map((file) => readFile(path.join(projectsDir, file), "utf8").then(JSON.parse)),
   );
   return projects
-    .map(({ html: _html, source: _source, generation: _generation, ...summary }) => summary)
+    .map(
+      ({
+        html: _html,
+        source: _source,
+        generation: _generation,
+        projectData: _projectData,
+        ...summary
+      }) => summary,
+    )
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
@@ -237,9 +274,11 @@ function preparePreviewHtml(input) {
     "base-uri 'none'",
   ].join("; ");
   const meta = '<meta http-equiv="Content-Security-Policy" content="' + csp + '">';
-  html = /<head[\s>]/i.test(html)
-    ? html.replace(/<head([^>]*)>/i, "<head$1>" + meta)
-    : html.replace(/<html([^>]*)>/i, "<html$1><head>" + meta + "</head>");
+  if (!/<meta\b[^>]*http-equiv=["']Content-Security-Policy["']/i.test(html)) {
+    html = /<head[\s>]/i.test(html)
+      ? html.replace(/<head([^>]*)>/i, "<head$1>" + meta)
+      : html.replace(/<html([^>]*)>/i, "<html$1><head>" + meta + "</head>");
+  }
 
   return {
     html,

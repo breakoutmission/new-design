@@ -233,6 +233,16 @@ textarea:focus {
 .preview-toolbar h2 { font-size: 24px; }
 .preview-status { display: flex; align-items: center; gap: 8px; font-size: 12px; }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #3f8d55; }
+.preview-actions { display: flex; align-items: center; gap: 10px; }
+.mode-badge {
+  padding: 7px 10px;
+  border: 1px solid #aeb4ac;
+  border-radius: 99px;
+  color: #4f5b53;
+  background: var(--paper);
+  font-size: 12px;
+  font-weight: 700;
+}
 .preview-frame-shell {
   height: calc(100vh - 230px);
   min-height: 560px;
@@ -246,6 +256,41 @@ textarea:focus {
   border: 0;
   background: #192b1b;
 }
+.editor-layout {
+  height: calc(100vh - 230px);
+  min-height: 560px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 14px;
+  padding: 14px;
+  background: #cfd3cb;
+  border: 1px solid #b4bbb3;
+}
+#gjs {
+  min-width: 0;
+  overflow: hidden;
+  border: 0;
+}
+#gjs .gjs-editor,
+#gjs .gjs-cv-canvas {
+  height: 100%;
+}
+#gjs .gjs-cv-canvas {
+  top: 0;
+  width: 100%;
+}
+.selection-panel {
+  padding: 18px;
+  border: 1px solid #b9bbae;
+  background: var(--paper);
+}
+.selection-panel strong {
+  display: block;
+  margin-top: 12px;
+  font: 600 16px/1.45 Georgia, "Noto Serif SC", serif;
+}
+.gjs-one-bg { background-color: #20382a; }
+.gjs-two-color { color: #f8f6ed; }
 
 #toast {
   position: fixed;
@@ -263,4 +308,47 @@ textarea:focus {
 
 @media (max-width: 1100px) {
   .project-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.project-card { cursor: pointer; }
+.project-card:focus-visible { outline: 3px solid var(--rust); outline-offset: 3px; }
+.text-controls {
+  margin: 20px 0 0;
+  padding: 18px 0 0;
+  display: grid;
+  gap: 8px;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.text-controls:disabled { opacity: .48; }
+.text-controls label {
+  margin-top: 7px;
+  font-size: 12px;
+  font-weight: 800;
+}
+.text-controls textarea {
+  min-height: 84px;
+  padding: 10px;
+  resize: vertical;
+  line-height: 1.45;
+}
+.text-controls input {
+  width: 100%;
+  min-height: 38px;
+  padding: 6px 8px;
+  border: 1px solid #aeb5ac;
+  background: white;
+}
+.text-controls input[type="color"] {
+  padding: 4px;
+  cursor: pointer;
+}
+.alignment-group {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 8px;
+}
+.alignment-group button {
+  min-height: 36px;
+  padding: 0;
 }
