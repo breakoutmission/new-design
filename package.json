@@ -1,0 +1,14 @@
+{
+  "name": "new-design-prototype",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prototype": "node prototype/open-design-grapesjs/server.mjs"
+  },
+  "dependencies": {
+    "express": "5.2.1",
+    "grapesjs": "0.23.2",
+    "playwright-core": "1.61.1"
+  },
+  "packageManager": "pnpm@10.33.0"
+}

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Open Design + GrapesJS 技术原型</title>
+    <link rel="stylesheet" href="/vendor/grapes.min.css" />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header>
+      <div>
+        <p class="eyebrow">THROWAWAY TECHNICAL PROTOTYPE</p>
+        <h1>Open Design → Codex → GrapesJS → 保存/导出</h1>
+      </div>
+      <div id="stage" class="stage">正在准备材料</div>
+    </header>
+
+    <section class="source-panel">
+      <label for="source">真实材料</label>
+      <textarea id="source">AI Presentation Studio
+这是一个帮助不懂 HTML 和 CSS 的人制作演示文稿的本地工具。
+用户粘贴中文项目材料，选择 Open Design 模板，然后由本机 Codex 一次性生成 HTML 演示文稿。
+生成后可以修改文字内容、字号、颜色、行距和对齐方式，也可以拖动并等比例缩放内容图片。
+项目使用 GrapesJS 项目数据保存，支持重新打开，并导出 HTML 和 PDF。</textarea>
+      <div class="actions">
+        <button id="load-template">加载模板样本</button>
+        <button id="generate" class="primary">发送（真实调用 Codex）</button>
+        <button id="undo">撤销</button>
+        <button id="redo">重做</button>
+        <button id="save">保存</button>
+        <button id="reload">重新打开</button>
+        <button id="export-html">导出 HTML</button>
+        <button id="export-pdf">导出 PDF</button>
+      </div>
+    </section>
+
+    <main>
+      <section class="editor-shell">
+        <div id="gjs"></div>
+      </section>
+      <aside>
+        <section>
+          <h2>文字样式</h2>
+          <div id="style-panel"></div>
+        </section>
+        <section>
+          <h2>当前状态</h2>
+          <pre id="state"></pre>
+        </section>
+        <details>
+          <summary>详细日志</summary>
+          <pre id="log"></pre>
+        </details>
+      </aside>
+    </main>
+
+    <div id="toast" role="status"></div>
+
+    <script src="/vendor/grapes.min.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>

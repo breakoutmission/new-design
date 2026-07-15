@@ -19,3 +19,8 @@ Thumbs.db
 Desktop.ini
 *.swp
 *~
+.pnpm-cache/
+node_modules/
+prototype/open-design-grapesjs/.prototype-data/
+.pnpm-store/
+.playwright-cli/
