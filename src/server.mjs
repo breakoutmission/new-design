@@ -1,0 +1,436 @@
+import express from "express";
+import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const publicDir = path.join(root, "public");
+const args = process.argv.slice(2);
+const fixturePath = path.resolve(readArg("--fixture-file") || path.join(root, "fixtures", "grove-deck.html"));
+const templateDir = path.join(root, "templates", "grove");
+const port = Number(readArg("--port") || process.env.PORT || 4318);
+const dataDir = path.resolve(
+  readArg("--data-dir") || process.env.AI_PRESENTATION_DATA_DIR || path.join(root, ".app-data"),
+);
+const projectsDir = path.join(dataDir, "projects");
+const generatorMode = args.includes("--fixture")
+  ? "fixture"
+  : process.env.AI_PRESENTATION_GENERATOR || "codex";
+const shouldOpen = !args.includes("--no-open");
+
+const app = express();
+app.disable("x-powered-by");
+app.use(express.json({ limit: "12mb" }));
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  next();
+});
+app.use(express.static(publicDir));
+
+app.get("/api/health", (_req, res) => {
+  res.json({ ok: true, generatorMode });
+});
+
+app.get("/api/templates", (_req, res) => {
+  res.json([
+    {
+      id: "zhangzara-grove",
+      name: "Grove",
+      description: "森林绿画布、米白文字、古典衬线标题和少量锈红强调色。",
+      status: "qualified-prototype",
+    },
+  ]);
+});
+
+app.get("/api/projects", async (_req, res, next) => {
+  try {
+    res.json(await listProjects());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/projects/:id", async (req, res, next) => {
+  try {
+    const project = await readProject(req.params.id);
+    if (!project) {
+      res.status(404).json({ error: "没有找到这个演示项目。" });
+      return;
+    }
+    res.json(project);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/generations", async (req, res) => {
+  const source = typeof req.body?.source === "string" ? req.body.source.trim() : "";
+  const templateId = req.body?.templateId === "zhangzara-grove" ? req.body.templateId : "";
+  if (!source) {
+    res.status(400).json({ error: "请先粘贴源材料。" });
+    return;
+  }
+  if (!templateId) {
+    res.status(400).json({ error: "请选择演示模板。" });
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const project = {
+    id: randomUUID(),
+    name: deriveProjectName(source),
+    source,
+    templateId,
+    templateName: "Grove",
+    status: "生成中",
+    createdAt: now,
+    updatedAt: now,
+    html: null,
+    report: null,
+    generation: { mode: generatorMode, events: [] },
+  };
+
+  await writeProject(project);
+  res.status(200);
+  res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store");
+  res.flushHeaders();
+
+  const send = (event) => {
+    const stamped = { timestamp: new Date().toISOString(), ...event };
+    const recorded =
+      event.type === "result"
+        ? { timestamp: stamped.timestamp, type: "result", projectId: project.id }
+        : stamped;
+    project.generation.events.push(recorded);
+    if (!res.destroyed) res.write(JSON.stringify(stamped) + "\n");
+  };
+
+  try {
+    send({ type: "stage", stage: "正在准备材料" });
+    await delay(generatorMode === "fixture" ? 60 : 0);
+    send({ type: "stage", stage: "正在生成演示文稿" });
+    const generated =
+      generatorMode === "fixture"
+        ? await readFile(fixturePath, "utf8")
+        : await generateWithCodex(source, send);
+
+    send({ type: "stage", stage: "正在检查 HTML" });
+    const { html, report } = preparePreviewHtml(generated);
+    project.status = "可编辑";
+    project.updatedAt = new Date().toISOString();
+    project.html = html;
+    project.report = report;
+    await writeProject(project);
+
+    send({ type: "stage", stage: "生成完成" });
+    await writeProject(project);
+    send({ type: "result", project });
+  } catch (error) {
+    project.status = "生成失败";
+    project.updatedAt = new Date().toISOString();
+    project.error = userFacingError(error);
+    await writeProject(project);
+    send({ type: "error", message: project.error });
+  } finally {
+    res.end();
+  }
+});
+
+app.use((error, _req, res, _next) => {
+  console.error(error);
+  if (!res.headersSent) res.status(500).json({ error: userFacingError(error) });
+});
+
+app.get("*path", (_req, res) => {
+  res.sendFile(path.join(publicDir, "index.html"));
+});
+
+await mkdir(projectsDir, { recursive: true });
+const server = app.listen(port, "127.0.0.1", () => {
+  const url = "http://127.0.0.1:" + port;
+  console.log("AI Presentation Studio (" + generatorMode + "): " + url);
+  if (shouldOpen && process.platform === "win32") openBrowser(url);
+});
+
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.on(signal, () => server.close(() => process.exit(0)));
+}
+
+function readArg(name) {
+  const index = args.indexOf(name);
+  return index >= 0 ? args[index + 1] : undefined;
+}
+
+function deriveProjectName(source) {
+  const firstLine = source
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean);
+  return (firstLine || "未命名项目").slice(0, 80);
+}
+
+function projectPath(id) {
+  if (!/^[0-9a-f-]+$/i.test(id)) throw new Error("项目编号无效。");
+  return path.join(projectsDir, id + ".json");
+}
+
+async function writeProject(project) {
+  await mkdir(projectsDir, { recursive: true });
+  await writeFile(projectPath(project.id), JSON.stringify(project, null, 2), "utf8");
+}
+
+async function readProject(id) {
+  const file = projectPath(id);
+  if (!existsSync(file)) return null;
+  return JSON.parse(await readFile(file, "utf8"));
+}
+
+async function listProjects() {
+  if (!existsSync(projectsDir)) return [];
+  const files = (await readdir(projectsDir)).filter((file) => file.endsWith(".json"));
+  const projects = await Promise.all(
+    files.map((file) => readFile(path.join(projectsDir, file), "utf8").then(JSON.parse)),
+  );
+  return projects
+    .map(({ html: _html, source: _source, generation: _generation, ...summary }) => summary)
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+}
+
+function preparePreviewHtml(input) {
+  let html = normalizePageCounter(normalizeTemplateImage(extractCompleteHtml(input)));
+  const forbidden = [
+    [/file:\/\//i, "HTML 包含本地文件地址。"],
+    [/<form\b/i, "HTML 包含表单。"],
+    [/<script\b[^>]*\bsrc\s*=/i, "HTML 包含外部脚本。"],
+    [/<base\b/i, "HTML 试图改变页面地址基础。"],
+    [/\b(?:fetch|XMLHttpRequest|WebSocket|EventSource)\s*\(/i, "HTML 包含外部数据请求。"],
+    [/navigator\.sendBeacon\s*\(/i, "HTML 包含外部数据发送。"],
+    [/window\.open\s*\(/i, "HTML 试图打开新窗口。"],
+    [/<a\b[^>]*\bdownload(?:\s|=|>)/i, "HTML 包含下载操作。"],
+  ];
+  for (const [pattern, message] of forbidden) {
+    if (pattern.test(html)) throw new Error(message);
+  }
+
+  const slideCount = countSlides(html);
+  const editableImageCount = (html.match(/<img\b[^>]*data-editable-image/gi) || []).length;
+  if (slideCount < 2) throw new Error("HTML 没有形成多页演示文稿。");
+  if (editableImageCount < 1) throw new Error("HTML 没有兼容的普通内容图片。");
+
+  const csp = [
+    "default-src 'none'",
+    "img-src data: blob: https:",
+    "font-src data: https:",
+    "style-src 'unsafe-inline' https:",
+    "script-src 'unsafe-inline'",
+    "connect-src 'none'",
+    "media-src data: https:",
+    "object-src 'none'",
+    "frame-src 'none'",
+    "form-action 'none'",
+    "base-uri 'none'",
+  ].join("; ");
+  const meta = '<meta http-equiv="Content-Security-Policy" content="' + csp + '">';
+  html = /<head[\s>]/i.test(html)
+    ? html.replace(/<head([^>]*)>/i, "<head$1>" + meta)
+    : html.replace(/<html([^>]*)>/i, "<html$1><head>" + meta + "</head>");
+
+  return {
+    html,
+    report: { slideCount, editableImageCount, localFileUrls: 0, sandbox: "allow-scripts" },
+  };
+}
+
+function normalizePageCounter(html) {
+  if (/data-slide-counter(?:\s|=|>)/i.test(html)) return html;
+
+  const counter = /(<[^>]+\bid=["']slide-counter["'][^>]*)(>)/i;
+  if (!counter.test(html)) throw new Error("HTML 没有兼容的当前页码。");
+  html = html.replace(counter, "$1 data-slide-counter$2");
+
+  const style = [
+    "<style data-product-page-counter>",
+    "#slide-counter{",
+    "display:block!important;position:fixed!important;right:24px!important;top:18px!important;",
+    "z-index:9999!important;padding:8px 12px!important;border-radius:999px!important;",
+    "color:#f7f4e8!important;background:rgba(20,35,24,.86)!important;",
+    "font:600 13px/1 monospace!important;letter-spacing:.06em!important;",
+    "}",
+    "</style>",
+  ].join("");
+  return html.replace(/<\/head>/i, style + "</head>");
+}
+
+function normalizeTemplateImage(html) {
+  if (/<img\b[^>]*data-editable-image/i.test(html)) return html;
+
+  const svg = [
+    '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760">',
+    '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">',
+    '<stop stop-color="#173b2a"/><stop offset="1" stop-color="#c8524a"/>',
+    "</linearGradient></defs>",
+    '<rect width="1200" height="760" fill="url(#g)"/>',
+    '<circle cx="920" cy="180" r="110" fill="#e8e4d6" opacity=".85"/>',
+    '<path d="M0 640 260 350 430 520 680 250 950 640Z" fill="#d4cfbf" opacity=".78"/>',
+    '<text x="70" y="110" fill="#e8e4d6" font-family="Arial" font-size="48">',
+    "Editable content image",
+    "</text></svg>",
+  ].join("");
+  const src = "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg);
+  const image =
+    '<img data-editable-image="true" alt="内置演示图片" src="' +
+    src +
+    '" style="position:absolute;left:55%;top:21%;width:38%;height:auto;object-fit:cover;border-radius:4px;" />';
+
+  const placeholder = /<div\s+class=["']img-placeholder["'][^>]*>[\s\S]*?<\/div>/i;
+  if (placeholder.test(html)) return html.replace(placeholder, image);
+
+  const firstSlideEnd = html.search(/<\/section>/i);
+  if (firstSlideEnd >= 0) return html.slice(0, firstSlideEnd) + image + html.slice(firstSlideEnd);
+  throw new Error("模板没有可以放置普通内容图片的幻灯片。");
+}
+
+function extractCompleteHtml(input) {
+  const value = String(input || "").trim();
+  const artifact = value.match(/<artifact\b[^>]*>([\s\S]*?)<\/artifact>/i);
+  const html = (artifact ? artifact[1] : value).trim();
+  if (!/<!doctype html>/i.test(html) || !/<html[\s>]/i.test(html) || !/<\/html>/i.test(html)) {
+    throw new Error("Codex 没有返回完整 HTML。");
+  }
+  return html;
+}
+
+function countSlides(html) {
+  return Array.from(html.matchAll(/class=["']([^"']*)["']/gi)).filter((match) =>
+    match[1].split(/\s+/).includes("slide"),
+  ).length;
+}
+
+async function generateWithCodex(source, send) {
+  const skillPath = path.join(templateDir, "SKILL.md");
+  const examplePath = path.join(templateDir, "example.html");
+  if (!existsSync(skillPath) || !existsSync(examplePath)) {
+    throw new Error("Grove 正式模板资产尚未安装。请先完成模板接入。");
+  }
+
+  const command = process.platform === "win32" ? process.env.ComSpec || "cmd.exe" : "codex";
+  const codexArgs = [
+    "exec",
+    "--ephemeral",
+    "--json",
+    "--skip-git-repo-check",
+    "--sandbox",
+    "read-only",
+    "--disable",
+    "plugins",
+    "-C",
+    templateDir,
+  ];
+  const commandArgs =
+    process.platform === "win32" ? ["/d", "/s", "/c", "codex.cmd", ...codexArgs] : codexArgs;
+  const child = spawn(command, commandArgs, {
+    cwd: templateDir,
+    env: process.env,
+    windowsHide: true,
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+
+  let stdoutBuffer = "";
+  let stderrBuffer = "";
+  let finalMessage = "";
+  const startedAt = new Date().toISOString();
+
+  const consume = (line) => {
+    if (!line.trim()) return;
+    let event;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      send({ type: "log", message: line.slice(0, 800) });
+      return;
+    }
+    if (event.type === "thread.started") {
+      send({ type: "log", message: "Codex thread: " + event.thread_id });
+    }
+    if (event.type === "item.completed" && event.item?.type === "agent_message") {
+      finalMessage = String(event.item.text || "");
+    }
+    if (event.type === "item.completed" && event.item?.type === "error") {
+      send({ type: "log", message: String(event.item.message || "Codex 运行错误") });
+    }
+    if (event.type === "turn.completed" && event.usage) {
+      send({
+        type: "usage",
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        usage: event.usage,
+      });
+    }
+  };
+
+  child.stdout.on("data", (chunk) => {
+    stdoutBuffer += chunk.toString("utf8");
+    const lines = stdoutBuffer.split(/\r?\n/);
+    stdoutBuffer = lines.pop() || "";
+    lines.forEach(consume);
+  });
+  child.stderr.on("data", (chunk) => {
+    stderrBuffer += chunk.toString("utf8");
+  });
+
+  const completed = new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", (code) => {
+      if (stdoutBuffer.trim()) consume(stdoutBuffer);
+      if (code !== 0) {
+        reject(new Error("Codex 退出，代码 " + code + "。" + stderrBuffer.trim().slice(-800)));
+      } else if (!finalMessage) {
+        reject(new Error("Codex 没有返回演示文稿。"));
+      } else {
+        resolve(finalMessage);
+      }
+    });
+  });
+
+  child.stdin.end(buildCodexPrompt(source));
+  return completed;
+}
+
+function buildCodexPrompt(source) {
+  return [
+    "你是一个无对话的 HTML 演示文稿生成器。不要向用户提问。",
+    "先完整读取当前目录的 SKILL.md 和 example.html。",
+    "以 example.html 为唯一工作基础，保留其视觉体系、页面结构、翻页脚本和装饰系统。",
+    "把示例内容替换为下面的真实中文项目材料，由模板约束决定页数。",
+    "不要引用本地文件，不要加入表单、下载、新窗口、外部脚本或外部 API。",
+    "至少保留一张普通 img 内容图片，并为其添加 data-editable-image 属性；图片必须是自包含 data URI。",
+    "最终回复只能包含完整 artifact，不要 Markdown 代码围栏，不要解释：",
+    '<artifact identifier="zhangzara-grove" type="text/html" title="Deck Title">',
+    "<!doctype html><html>...</html>",
+    "</artifact>",
+    "",
+    "<source-material>",
+    source,
+    "</source-material>",
+  ].join("\n");
+}
+
+function openBrowser(url) {
+  const opener = spawn("cmd.exe", ["/d", "/s", "/c", "start", "", url], {
+    detached: true,
+    stdio: "ignore",
+    windowsHide: true,
+  });
+  opener.unref();
+}
+
+function userFacingError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.replaceAll(root, "应用目录");
+}

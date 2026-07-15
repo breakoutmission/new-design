@@ -1,0 +1,18 @@
+{
+  "name": "ai-presentation-studio",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "start:fixture": "node src/server.mjs --fixture",
+    "test:browser": "node tests/browser/foundation.mjs",
+    "test:browser:headed": "node tests/browser/foundation.mjs --headed",
+    "test:browser:real": "node tests/browser/real-grove.mjs",
+    "test:browser:real:replay": "node tests/browser/real-grove.mjs --reuse-latest"
+  },
+  "dependencies": {
+    "express": "5.2.1",
+    "playwright-core": "1.61.1"
+  },
+  "packageManager": "pnpm@10.33.0"
+}

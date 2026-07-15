@@ -2,6 +2,15 @@
 .codex/
 .agents/
 
+# Local application and test data
+.app-data/
+.playwright-cli/
+.pnpm-cache/
+.pnpm-store/
+.tmp-issue-bodies/
+node_modules/
+output/
+
 # Local project content
 archive/
 learning-records/
