@@ -9,6 +9,7 @@ Yes. A selectively reused Open Design zhangzara template can pass through the lo
 - Open Design Grove loaded as 12 slides with exactly one compatible ordinary content image.
 - The image moved and resized from about 356×225 to 449×284 while preserving its approximately 1.58 aspect ratio; only the four corner resize handles were present.
 - The edited image coordinates and dimensions survived a reset and reopen from GrapesJS project data.
+- Undo/redo was exercised through the visible controls: a drag changed the image position from (515, 130) to (55, 21), undo restored (515, 130), and redo restored (55, 21).
 - A heading was changed to “AI 演示工作流已经跑通” and its computed font size changed to 36px.
 - Exported HTML opened independently and ArrowRight changed the deck transform from 0vw to -100vw and the active navigation dot from 0 to 1.
 - Backend PDF export produced 12 pages at 960×540 points with backgrounds and Chinese text rendered.
