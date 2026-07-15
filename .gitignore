@@ -1,0 +1,10 @@
+# Local Codex and agent state
+.codex/
+.agents/
+
+# OS and editor artifacts
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*~

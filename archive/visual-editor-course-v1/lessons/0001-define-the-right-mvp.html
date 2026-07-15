@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>第一课：锁定正确的 MVP</title>
+  <link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main>
+  <div class="eyebrow">Lesson 0001 · Product thinking</div>
+  <h1>先做窄，<br>再做强。</h1>
+  <p class="lead">这一课不学代码。你只需要完成一个决定：你是在做“缩小版 Open Design”，还是在做一个能让目标用户完成关键任务的小产品。</p>
+  <div class="meta">
+    <span class="pill">预计 12 分钟</span>
+    <span class="pill">产出：一句话问题定义</span>
+    <span class="pill">无需代码</span>
+  </div>
+
+  <section class="card callout">
+    <strong>今天的结论</strong>
+    <p>你的第一款产品不应是 Open Design 的功能子集，而应是一个更聚焦的工作流：<b>AI 生成或导入 HTML → 直接微调 → 保存 → 导出</b>。</p>
+  </section>
+
+  <h2>为什么不能从“我要哪些功能”开始？</h2>
+  <p>Open Design 已经覆盖 Agent、Skill、模板、Design System、预览、评论修改、参数调节、多种导出和插件。若从仓库中挑功能，很容易得到一个杂乱清单。产品经理真正先问的是：哪个用户在什么时刻卡住了，而你承诺解决哪一个卡点？</p>
+
+  <div class="grid">
+    <section class="card compare">
+      <strong>平台思路</strong>
+      <p>我要支持模板、Skill、PPT、网页、图片、AI 生成、拖拽、插件……</p>
+      <p class="small">问题：功能互相依赖，没有清晰的完成标准。</p>
+    </section>
+    <section class="card compare good">
+      <strong>任务思路</strong>
+      <p>我只帮助不会前端的 PM，把 AI 生成页面的最后 20% 细节改完并导出。</p>
+      <p class="small">优势：用户、场景、动作和结果都可测试。</p>
+    </section>
+  </div>
+
+  <h2>快速判断：哪个更像 MVP？</h2>
+  <section class="card">
+    <div class="choice">
+      <input id="scope-a" type="radio" name="scope" value="platform">
+      <label for="scope-a">支持网页、PPT、PDF、图片和视频，并允许安装所有 Skill。</label>
+    </div>
+    <div class="choice">
+      <input id="scope-b" type="radio" name="scope" value="focused">
+      <label for="scope-b">支持 3 个 HTML 模板，用户可改文字、图片、间距、模块顺序并导出。</label>
+    </div>
+    <div class="choice">
+      <input id="scope-c" type="radio" name="scope" value="fork">
+      <label for="scope-c">直接 fork Open Design，删除不需要的页面，再增加拖拽编辑。</label>
+    </div>
+    <div class="actions"><button onclick="checkScope()">检查答案</button></div>
+    <div id="scope-result" class="result" aria-live="polite"></div>
+  </section>
+
+  <h2>做出你的第一版问题定义</h2>
+  <p>不要追求漂亮措辞。今天只需要把用户、触发时刻、核心动作和结果说清楚。</p>
+  <section class="card">
+    <label for="target-user">1. 第一个目标用户是谁？</label>
+    <input id="target-user" placeholder="例如：不会写前端代码的初级产品经理">
+
+    <label for="pain-moment">2. 他在什么时刻遇到问题？</label>
+    <textarea id="pain-moment" placeholder="例如：AI 已经生成页面，但文字、图片比例和留白仍不合适"></textarea>
+
+    <label for="core-action">3. 他最需要完成什么动作？</label>
+    <textarea id="core-action" placeholder="例如：直接点击和拖动，修改文字、图片、间距和模块顺序"></textarea>
+
+    <label for="desired-outcome">4. 最终希望得到什么结果？</label>
+    <textarea id="desired-outcome" placeholder="例如：不改代码、不反复提示 AI，也能交付可用 HTML"></textarea>
+
+    <div class="actions">
+      <button onclick="buildStatement()">生成并保存在浏览器</button>
+      <button class="secondary" onclick="location.reload()">查看已保存版本</button>
+    </div>
+    <div id="statement-result" class="result" aria-live="polite"></div>
+  </section>
+
+  <section class="card callout good">
+    <strong>完成标准</strong>
+    <p>把生成的句子复制给我，并告诉我：你现实中最容易找到哪 5 个人来试用。下一课我们会把 Open Design 拆成一张“借鉴 / 不借鉴 / 待验证”任务表。</p>
+  </section>
+
+  <h2>主资料</h2>
+  <p>建议只读两段，不要现在通读代码：</p>
+  <ul>
+    <li><a href="https://github.com/nexu-io/open-design#what-is-open-design">Open Design：What is Open Design</a></li>
+    <li><a href="https://github.com/nexu-io/open-design/blob/main/docs/architecture.md">Open Design：Architecture</a></li>
+  </ul>
+
+  <footer>
+    遇到任何词看不懂，直接把原句发给我。下一步会根据你的答案调整范围，不会机械照搬当前路线图。
+  </footer>
+</main>
+<script src="../assets/lesson.js"></script>
+</body>
+</html>
+
