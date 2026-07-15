@@ -2,6 +2,17 @@
 .codex/
 .agents/
 
+# Local project content
+archive/
+learning-records/
+DeckFlow-Lite-PRD.md
+MISSION.md
+NOTES.md
+OPENDESIGN-REPOSITORY-GUIDE.md
+PROJECT-BLUEPRINT.md
+RESOURCES.md
+START-HERE.md
+
 # OS and editor artifacts
 .DS_Store
 Thumbs.db
