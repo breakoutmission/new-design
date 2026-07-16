@@ -2,6 +2,7 @@ import grapesjs from "/vendor/grapesjs/grapes.mjs";
 
 const EDITABLE_TEXT_SELECTOR = "[data-editable-text], h1, h2, h3, h4, h5, h6, p";
 const IMAGE_STYLE_KEYS = ["position", "left", "top", "right", "bottom", "width", "height"];
+const PRESENTATION_STYLES_KEY = "apsPresentationStyles";
 
 export async function mountPresentationEditor({
   container,
@@ -10,6 +11,7 @@ export async function mountPresentationEditor({
   onLocked,
   onHistoryChange = () => {},
 }) {
+  const presentationStyles = getPresentationStyles(project);
   const initialData = project.projectData
     ? { projectData: project.projectData }
     : parsePresentationHtml(project.html);
@@ -28,10 +30,14 @@ export async function mountPresentationEditor({
   const frame = editor.Canvas.getFrameEl();
   const frameWindow = frame.contentWindow;
   const frameDocument = frame.contentDocument;
-  const selectionStyle = frameDocument.createElement("style");
-  selectionStyle.textContent =
-    '[data-aps-selected="true"]{outline:4px solid #c25545!important;outline-offset:3px!important;}';
-  frameDocument.head.append(selectionStyle);
+  appendPresentationStyles(frameDocument, presentationStyles);
+  const editorSupportStyle = frameDocument.createElement("style");
+  editorSupportStyle.setAttribute("data-aps-editor-support", "true");
+  editorSupportStyle.textContent = [
+    '[data-aps-selected="true"]{outline:4px solid #c25545!important;outline-offset:3px!important;}',
+    "[data-anim]{opacity:1!important;animation:none!important;}",
+  ].join("");
+  frameDocument.head.append(editorSupportStyle);
 
   lockComponents(editor.getWrapper());
   let selectedComponent = null;
@@ -313,9 +319,17 @@ export async function mountPresentationEditor({
   showSlide(0);
   frame.title = "演示文稿编辑画布";
 
-  const getProjectData = () => editor.getProjectData();
+  const getProjectData = () => ({
+    ...editor.getProjectData(),
+    [PRESENTATION_STYLES_KEY]: presentationStyles,
+  });
   const getPreviewHtml = () =>
-    serializePresentationHtml(project.html, editor.getHtml(), editor.getCss());
+    serializePresentationHtml(
+      project.html,
+      editor.getHtml(),
+      presentationStyles,
+      editor.getCss(),
+    );
 
   return {
     editor,
@@ -340,10 +354,30 @@ export async function mountPresentationEditor({
   };
 }
 
+function getPresentationStyles(project) {
+  const storedStyles = project.projectData?.[PRESENTATION_STYLES_KEY];
+  if (Array.isArray(storedStyles)) {
+    const normalizedStyles = storedStyles.map(normalizePresentationStyle);
+    if (normalizedStyles.every(Boolean)) return normalizedStyles;
+  }
+
+  const document = new DOMParser().parseFromString(project.html, "text/html");
+  return extractPresentationStyles(document);
+}
+
+function normalizePresentationStyle(style) {
+  if (typeof style === "string") return { css: style, attributes: {} };
+  if (!style || typeof style.css !== "string") return null;
+  const attributes = Object.fromEntries(
+    Object.entries(style.attributes || {}).filter(([, value]) => typeof value === "string"),
+  );
+  return { css: style.css, attributes };
+}
+
 function parsePresentationHtml(html) {
   const document = new DOMParser().parseFromString(html, "text/html");
-  const style = Array.from(document.querySelectorAll("style"))
-    .map((element) => element.textContent)
+  const style = extractPresentationStyles(document)
+    .map(({ css }) => css)
     .join(String.fromCharCode(10));
   document
     .querySelectorAll("script, style, meta[http-equiv], title")
@@ -354,7 +388,7 @@ function parsePresentationHtml(html) {
   };
 }
 
-function serializePresentationHtml(shellHtml, bodyHtml, css) {
+function serializePresentationHtml(shellHtml, bodyHtml, presentationStyles, css) {
   const document = new DOMParser().parseFromString(shellHtml, "text/html");
   const scripts = Array.from(document.querySelectorAll("script")).map(
     (element) => element.outerHTML,
@@ -365,12 +399,44 @@ function serializePresentationHtml(shellHtml, bodyHtml, css) {
     .querySelectorAll("[data-aps-selected]")
     .forEach((element) => element.removeAttribute("data-aps-selected"));
 
-  const style = document.createElement("style");
-  style.setAttribute("data-editor-styles", "true");
-  style.textContent = css;
-  document.head.append(style);
+  presentationStyles.forEach((definition) => {
+    document.head.append(createPresentationStyle(document, definition));
+  });
+  const editorStyle = document.createElement("style");
+  editorStyle.setAttribute("data-editor-styles", "true");
+  editorStyle.textContent = css;
+  document.head.append(editorStyle);
   scripts.forEach((script) => document.body.insertAdjacentHTML("beforeend", script));
   return "<!doctype html>" + String.fromCharCode(10) + document.documentElement.outerHTML;
+}
+
+function appendPresentationStyles(frameDocument, presentationStyles) {
+  const fragment = frameDocument.createDocumentFragment();
+  presentationStyles.forEach((definition) => {
+    const style = createPresentationStyle(frameDocument, definition);
+    style.setAttribute("data-aps-source-styles", "true");
+    fragment.append(style);
+  });
+  frameDocument.head.prepend(fragment);
+}
+
+function createPresentationStyle(document, { css, attributes }) {
+  const style = document.createElement("style");
+  Object.entries(attributes).forEach(([name, value]) => style.setAttribute(name, value));
+  style.textContent = css;
+  return style;
+}
+
+function extractPresentationStyles(document) {
+  return Array.from(
+    document.querySelectorAll("style:not([data-editor-styles])"),
+    (element) => ({
+      css: element.textContent || "",
+      attributes: Object.fromEntries(
+        Array.from(element.attributes, ({ name, value }) => [name, value]),
+      ),
+    }),
+  );
 }
 
 function findEditableText(target) {
