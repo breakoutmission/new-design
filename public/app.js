@@ -42,6 +42,9 @@ const selectionStatus = document.querySelector("#selection-status");
 const undoButton = document.querySelector("#undo");
 const redoButton = document.querySelector("#redo");
 const saveButton = document.querySelector("#save");
+const exportHtmlButton = document.querySelector("#export-html");
+const exportPdfButton = document.querySelector("#export-pdf");
+const exportStatus = document.querySelector("#export-status");
 const textControls = document.querySelector("#text-controls");
 const textContent = document.querySelector("#text-content");
 const fontSize = document.querySelector("#font-size");
@@ -62,6 +65,8 @@ editToggle.addEventListener("click", toggleEditorMode);
 undoButton.addEventListener("click", () => state.editor?.undo());
 redoButton.addEventListener("click", () => state.editor?.redo());
 saveButton.addEventListener("click", saveCurrentProject);
+exportHtmlButton.addEventListener("click", () => void exportCurrentProject("html"));
+exportPdfButton.addEventListener("click", () => void exportCurrentProject("pdf"));
 textContent.addEventListener("input", () => state.editor?.updateTextContent(textContent.value));
 fontSize.addEventListener("input", () => state.editor?.updateTextStyle("font-size", fontSize.value + "px"));
 textColor.addEventListener("input", () => state.editor?.updateTextStyle("color", textColor.value));
@@ -503,22 +508,9 @@ function refreshPreviewFromEditor() {
 }
 
 async function saveCurrentProject() {
-  if (!state.editor || !state.currentProject) return;
   saveButton.disabled = true;
   try {
-    const html = state.editor.getPreviewHtml();
-    const response = await fetch("/api/projects/" + encodeURIComponent(state.currentProject.id), {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        html,
-        projectData: state.editor.getProjectData(),
-      }),
-    });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || "项目没有保存成功。");
-    state.currentProject = payload;
-    document.querySelector('iframe[title="演示文稿预览"]').srcdoc = payload.html;
+    await persistCurrentProject();
     showToast("保存成功");
   } catch (error) {
     console.error(error);
@@ -526,6 +518,66 @@ async function saveCurrentProject() {
   } finally {
     saveButton.disabled = state.mode !== "edit";
   }
+}
+
+async function persistCurrentProject() {
+  if (!state.editor || !state.currentProject) throw new Error("请先打开演示项目再保存。");
+  const html = state.editor.getPreviewHtml();
+  const response = await fetch("/api/projects/" + encodeURIComponent(state.currentProject.id), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      html,
+      projectData: state.editor.getProjectData(),
+    }),
+  });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || "项目没有保存成功。");
+  state.currentProject = payload;
+  document.querySelector('iframe[title="演示文稿预览"]').srcdoc = payload.html;
+  return payload;
+}
+
+async function exportCurrentProject(format) {
+  if (!state.currentProject) return;
+  const label = format === "pdf" ? "PDF" : "HTML";
+  exportHtmlButton.disabled = true;
+  exportPdfButton.disabled = true;
+  exportStatus.textContent = "正在保存当前编辑……";
+  try {
+    await ensureEditor();
+    const project = await persistCurrentProject();
+    exportStatus.textContent = "保存成功，正在导出 " + label;
+    const response = await fetch(
+      "/api/projects/" + encodeURIComponent(project.id) + "/exports/" + encodeURIComponent(format),
+      { method: "POST" },
+    );
+    if (!response.ok) {
+      const payload = await response.json();
+      throw new Error(payload.error || label + " 没有导出成功。");
+    }
+    const blob = await response.blob();
+    downloadBlob(blob, project.name + "." + format);
+    exportStatus.textContent = label + " 导出成功";
+  } catch (error) {
+    console.error(error);
+    exportStatus.textContent = error.message || label + " 没有导出成功，请重试。";
+    showToast(exportStatus.textContent);
+  } finally {
+    exportHtmlButton.disabled = false;
+    exportPdfButton.disabled = false;
+  }
+}
+
+function downloadBlob(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 async function deleteProject(projectId, projectName) {

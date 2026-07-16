@@ -89,10 +89,13 @@
             <button id="undo" type="button" disabled>撤销</button>
             <button id="redo" type="button" disabled>重做</button>
             <button id="save" type="button" disabled>保存</button>
+            <button id="export-html" type="button">导出 HTML</button>
+            <button id="export-pdf" type="button">导出 PDF</button>
             <button id="edit-toggle" type="button">编辑</button>
             <button id="regenerate" type="button">重新生成</button>
           </div>
         </div>
+        <p id="export-status" class="export-status" role="status" aria-live="polite"></p>
         <div class="preview-frame-shell">
           <iframe title="演示文稿预览" sandbox="allow-scripts"></iframe>
         </div>

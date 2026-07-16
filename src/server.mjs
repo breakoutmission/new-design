@@ -6,6 +6,7 @@ import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { chromium } from "playwright-core";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publicDir = path.join(root, "public");
@@ -26,6 +27,7 @@ const shouldOpen = !args.includes("--no-open");
 let activeGeneration = null;
 let shuttingDown = false;
 const projectOperations = new Map();
+const fixturePdfFailures = new Set();
 
 const app = express();
 app.disable("x-powered-by");
@@ -135,6 +137,76 @@ app.patch("/api/projects/:id", async (req, res, next) => {
     res.json(project);
   } catch (error) {
     next(error);
+  } finally {
+    releaseProjectOperation(req.params.id, operation);
+  }
+});
+
+app.post("/api/projects/:id/exports/html", async (req, res, next) => {
+  const operation = { type: "export-html" };
+  try {
+    if (!claimProjectOperation(req.params.id, operation)) {
+      res.status(409).json({ error: "这个项目正在执行其他操作，请稍后再试。" });
+      return;
+    }
+    const project = await readProject(req.params.id);
+    if (!project) {
+      res.status(404).json({ error: "没有找到这个演示项目。" });
+      return;
+    }
+    if (project.status !== "可编辑" || !project.html || !project.projectData) {
+      res.status(409).json({ error: "请先保存演示项目，再导出 HTML。" });
+      return;
+    }
+
+    const html = prepareSelfContainedHtml(project.html);
+    const fileName = project.name + ".html";
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encodeURIComponent(fileName));
+    res.send(html);
+  } catch (error) {
+    next(error);
+  } finally {
+    releaseProjectOperation(req.params.id, operation);
+  }
+});
+
+app.post("/api/projects/:id/exports/pdf", async (req, res, next) => {
+  const operation = { type: "export-pdf" };
+  try {
+    if (!claimProjectOperation(req.params.id, operation)) {
+      res.status(409).json({ error: "这个项目正在执行其他操作，请稍后再试。" });
+      return;
+    }
+    const project = await readProject(req.params.id);
+    if (!project) {
+      res.status(404).json({ error: "没有找到这个演示项目。" });
+      return;
+    }
+    if (project.status !== "可编辑" || !project.html || !project.projectData) {
+      res.status(409).json({ error: "请先保存演示项目，再导出 PDF。" });
+      return;
+    }
+
+    if (
+      generatorMode === "fixture" &&
+      project.source.includes("[fixture:pdf-fail-once]") &&
+      !fixturePdfFailures.has(project.id)
+    ) {
+      fixturePdfFailures.add(project.id);
+      throw new Error("固定夹具模拟本地浏览器首次渲染失败。");
+    }
+    const pdf = await renderProjectPdf(project.html);
+    const fileName = project.name + ".pdf";
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encodeURIComponent(fileName));
+    res.send(pdf);
+  } catch (error) {
+    if (res.headersSent) {
+      next(error);
+    } else {
+      res.status(500).json({ error: pdfExportError(error) });
+    }
   } finally {
     releaseProjectOperation(req.params.id, operation);
   }
@@ -633,6 +705,113 @@ function countSlides(html) {
   return Array.from(html.matchAll(/class=["']([^"']*)["']/gi)).filter((match) =>
     match[1].split(/\s+/).includes("slide"),
   ).length;
+}
+
+function prepareSelfContainedHtml(html) {
+  const selfContained = html.replace(
+    /<link\b(?=[^>]*\bhref=["']https?:\/\/)[^>]*>\s*/gi,
+    "",
+  );
+  const externalResources = [
+    /<(?:img|source|video|audio|track|iframe|embed|object|script|use)\b[^>]*\b(?:src|srcset|poster|data|href)=["']https?:\/\//i,
+    /url\(\s*["']?https?:\/\//i,
+    /@import\s+(?:url\()?\s*["']?https?:\/\//i,
+  ];
+  if (externalResources.some((pattern) => pattern.test(selfContained))) {
+    throw new Error("HTML 导出失败：演示仍包含未内嵌的外部资源。请重新生成后重试。");
+  }
+  return selfContained;
+}
+
+async function renderProjectPdf(html) {
+  let browser;
+  let context;
+  try {
+    browser = await chromium.launch({ channel: "chrome", headless: true });
+    context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    const page = await context.newPage();
+    const renderUrl = "http://aps.invalid/render";
+    const renderHtml = preparePdfRenderHtml(html);
+    const renderCsp = [
+      "default-src 'none'",
+      "img-src data: blob: https:",
+      "font-src data: https:",
+      "style-src 'unsafe-inline' https:",
+      "script-src 'none'",
+      "connect-src 'none'",
+      "media-src data: https:",
+      "object-src 'none'",
+      "frame-src 'none'",
+      "form-action 'none'",
+      "base-uri 'none'",
+    ].join("; ");
+    await context.route("**/*", async (route) => {
+      const request = route.request();
+      const blockedConnection = ["xhr", "fetch", "eventsource", "websocket"].includes(
+        request.resourceType(),
+      );
+      if (request.isNavigationRequest() && request.url() === renderUrl) {
+        await route.fulfill({
+          status: 200,
+          contentType: "text/html; charset=utf-8",
+          headers: { "Content-Security-Policy": renderCsp },
+          body: renderHtml,
+        });
+      } else if (request.isNavigationRequest() || blockedConnection) {
+        await route.abort("blockedbyclient");
+      } else {
+        await route.continue();
+      }
+    });
+    page.on("popup", (popup) => void popup.close());
+    await page.goto(renderUrl, { waitUntil: "load" });
+    await page.waitForFunction(() =>
+      Array.from(document.images).every((image) => image.complete && image.naturalWidth > 0),
+    );
+    await page.evaluate(async () => {
+      if (document.fonts?.ready) await document.fonts.ready;
+    });
+    await page.emulateMedia({ media: "screen" });
+    await page.addStyleTag({
+      content: [
+        "@page{size:13.333333in 7.5in;margin:0}",
+        "html,body{margin:0!important;padding:0!important;width:100%!important;height:auto!important;overflow:visible!important}",
+        "#deck{display:block!important;width:100%!important;height:auto!important;transform:none!important;transition:none!important}",
+        ".slide{display:block!important;box-sizing:border-box!important;width:100vw!important;height:100vh!important;min-height:100vh!important;max-height:100vh!important;overflow:hidden!important;break-after:page!important;page-break-after:always!important;animation:none!important}",
+        ".slide:last-of-type{break-after:auto!important;page-break-after:auto!important}",
+        "nav{display:none!important}",
+        "[data-anim]{opacity:1!important;visibility:visible!important;transform:none!important;clip-path:none!important}",
+        "*{animation-delay:0s!important;animation-duration:0s!important;transition:none!important}",
+      ].join(""),
+    });
+    return await page.pdf({
+      width: "13.333333in",
+      height: "7.5in",
+      margin: { top: 0, right: 0, bottom: 0, left: 0 },
+      preferCSSPageSize: true,
+      printBackground: true,
+      displayHeaderFooter: false,
+    });
+  } finally {
+    if (context) await context.close();
+    if (browser) await browser.close();
+  }
+}
+
+function preparePdfRenderHtml(html) {
+  return html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>\s*/gi, "")
+    .replace(
+      /<meta\b(?=[^>]*\bhttp-equiv\s*=\s*(?:["']refresh["']|refresh\b))[^>]*>\s*/gi,
+      "",
+    )
+    .replace(/<base\b[^>]*>\s*/gi, "")
+    .replace(/\s+on[a-z0-9_-]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+}
+
+function pdfExportError(error) {
+  console.error(error);
+  return "PDF 导出失败：本地浏览器未能完成渲染。项目已经保存，可以继续使用并重试。";
 }
 
 async function generateWithCodex(source, send, task) {
