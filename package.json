@@ -5,9 +5,10 @@
   "scripts": {
     "start": "node src/server.mjs",
     "start:fixture": "node src/server.mjs --fixture",
-    "test:browser": "node tests/browser/foundation.mjs && node tests/browser/recovery.mjs",
+    "test:browser": "node tests/browser/foundation.mjs && node tests/browser/recovery.mjs && node tests/browser/export.mjs",
     "test:browser:foundation": "node tests/browser/foundation.mjs",
     "test:browser:recovery": "node tests/browser/recovery.mjs",
+    "test:browser:export": "node tests/browser/export.mjs",
     "test:browser:headed": "node tests/browser/foundation.mjs --headed",
     "test:browser:real": "node tests/browser/real-grove.mjs",
     "test:browser:real:cancel": "node tests/browser/real-cancel.mjs",
@@ -18,5 +19,8 @@
     "grapesjs": "0.23.2",
     "playwright-core": "1.61.1"
   },
-  "packageManager": "pnpm@10.33.0"
+  "packageManager": "pnpm@10.33.0",
+  "devDependencies": {
+    "pdfjs-dist": "^6.1.200"
+  }
 }
