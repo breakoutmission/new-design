@@ -28,6 +28,8 @@ Use terminology defined in `CONTEXT.md`. Avoid introducing different names for c
 
 If an important concept is missing, record it through the domain-modeling workflow.
 
+`CONTEXT.md` contains only concepts specific to AI Presentation Studio. General product, design, Git, AI, web, testing, and development terminology belongs in the beginner-facing `docs/GLOSSARY.md`; maintain it according to `docs/agents/glossary.md` instead of expanding `CONTEXT.md` with general jargon.
+
 ## ADR conflicts
 
 If proposed work contradicts an existing ADR, identify the conflict explicitly instead of silently overriding the decision.
