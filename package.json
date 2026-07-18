@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node src/server.mjs",
     "start:fixture": "node src/server.mjs --fixture",
-    "test:browser": "node tests/browser/foundation.mjs && node tests/browser/grove-css-fidelity.mjs && node tests/browser/recovery.mjs && node tests/browser/export.mjs",
+    "test:browser": "node tests/browser/foundation.mjs && node tests/browser/grove-css-fidelity.mjs && node tests/browser/multipage-edit-preview.mjs && node tests/browser/recovery.mjs && node tests/browser/export.mjs",
     "test:browser:foundation": "node tests/browser/foundation.mjs",
     "test:browser:recovery": "node tests/browser/recovery.mjs",
     "test:browser:export": "node tests/browser/export.mjs",
@@ -13,7 +13,8 @@
     "test:browser:real": "node tests/browser/real-grove.mjs",
     "test:browser:real:cancel": "node tests/browser/real-cancel.mjs",
     "test:browser:real:replay": "node tests/browser/real-grove.mjs --reuse-latest",
-    "test:browser:grove-css": "node tests/browser/grove-css-fidelity.mjs"
+    "test:browser:grove-css": "node tests/browser/grove-css-fidelity.mjs",
+    "test:browser:multipage": "node tests/browser/multipage-edit-preview.mjs"
   },
   "dependencies": {
     "express": "5.2.1",

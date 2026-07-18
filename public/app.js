@@ -38,6 +38,9 @@ const regenerateButton = document.querySelector("#regenerate");
 const previewFrameShell = document.querySelector(".preview-frame-shell");
 const editorLayout = document.querySelector("#editor-layout");
 const editorContainer = document.querySelector("#gjs");
+const editorPreviousSlide = document.querySelector("#editor-previous-slide");
+const editorNextSlide = document.querySelector("#editor-next-slide");
+const editorSlideCounter = document.querySelector("#editor-slide-counter");
 const selectionStatus = document.querySelector("#selection-status");
 const undoButton = document.querySelector("#undo");
 const redoButton = document.querySelector("#redo");
@@ -62,6 +65,8 @@ cancelGenerationButton.addEventListener("click", cancelGeneration);
 retryGenerationButton.addEventListener("click", retryCurrentProject);
 regenerateButton.addEventListener("click", regenerateCurrentProject);
 editToggle.addEventListener("click", toggleEditorMode);
+editorPreviousSlide.addEventListener("click", () => state.editor?.previousSlide());
+editorNextSlide.addEventListener("click", () => state.editor?.nextSlide());
 undoButton.addEventListener("click", () => state.editor?.undo());
 redoButton.addEventListener("click", () => state.editor?.redo());
 saveButton.addEventListener("click", saveCurrentProject);
@@ -425,7 +430,7 @@ function updateSendState() {
 }
 async function toggleEditorMode() {
   if (state.mode === "edit") {
-    refreshPreviewFromEditor();
+    await refreshPreviewFromEditor();
     setMode("preview");
     return;
   }
@@ -474,6 +479,7 @@ async function ensureEditor() {
       showToast("这个元素不可编辑");
     },
     onHistoryChange: updateHistoryButtons,
+    onSlideChange: updateEditorNavigation,
   });
   state.editorProjectId = state.currentProject.id;
 }
@@ -492,19 +498,35 @@ function updateHistoryButtons({ canUndo = false, canRedo = false } = {}) {
   redoButton.disabled = !canRedo;
 }
 
+function updateEditorNavigation({
+  current = 1,
+  total = 1,
+  canPrevious = false,
+  canNext = false,
+} = {}) {
+  editorSlideCounter.textContent = current + " / " + total;
+  editorPreviousSlide.disabled = !canPrevious;
+  editorNextSlide.disabled = !canNext;
+}
+
 function resetEditor() {
   if (state.editor) state.editor.destroy();
   state.editor = null;
   state.editorProjectId = null;
   textControls.disabled = true;
   updateHistoryButtons();
+  updateEditorNavigation();
 }
 
-function refreshPreviewFromEditor() {
+async function refreshPreviewFromEditor() {
   if (!state.editor || !state.currentProject) return;
   const html = state.editor.getPreviewHtml();
   state.currentProject = { ...state.currentProject, html };
-  document.querySelector('iframe[title="演示文稿预览"]').srcdoc = html;
+  const frame = document.querySelector('iframe[title="演示文稿预览"]');
+  await new Promise((resolve) => {
+    frame.addEventListener("load", resolve, { once: true });
+    frame.srcdoc = html;
+  });
 }
 
 async function saveCurrentProject() {

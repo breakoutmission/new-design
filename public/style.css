@@ -298,6 +298,29 @@ textarea:focus {
   background: #cfd3cb;
   border: 1px solid #b4bbb3;
 }
+.editor-canvas-shell {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+.editor-page-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+.editor-page-navigation button {
+  width: 42px;
+  height: 34px;
+  padding: 0;
+}
+#editor-slide-counter {
+  min-width: 72px;
+  text-align: center;
+  font: 700 13px/1 "Cascadia Mono", monospace;
+}
 #gjs {
   min-width: 0;
   overflow: hidden;

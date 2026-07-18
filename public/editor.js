@@ -10,6 +10,7 @@ export async function mountPresentationEditor({
   onSelection,
   onLocked,
   onHistoryChange = () => {},
+  onSlideChange = () => {},
 }) {
   const presentationStyles = getPresentationStyles(project);
   const initialData = project.projectData
@@ -184,23 +185,45 @@ export async function mountPresentationEditor({
     currentSlide = clamp(next, 0, slides.length - 1);
     deck.style.transform = "translateX(-" + currentSlide * 100 + "vw)";
     if (counter) counter.textContent = currentSlide + 1 + " / " + slides.length;
+    onSlideChange({
+      current: currentSlide + 1,
+      total: slides.length,
+      canPrevious: currentSlide > 0,
+      canNext: currentSlide < slides.length - 1,
+    });
     updateImageHandles();
   };
 
+  const previousSlide = () => showSlide(currentSlide - 1);
+  const nextSlide = () => showSlide(currentSlide + 1);
   const previousButton = frameDocument.querySelector("[data-prev]");
   const nextButton = frameDocument.querySelector("[data-next]");
-  const previousSlide = (event) => {
+  const handlePreviousSlide = (event) => {
     event.preventDefault();
     event.stopImmediatePropagation();
-    showSlide(currentSlide - 1);
+    previousSlide();
   };
-  const nextSlide = (event) => {
+  const handleNextSlide = (event) => {
     event.preventDefault();
     event.stopImmediatePropagation();
-    showSlide(currentSlide + 1);
+    nextSlide();
   };
-  previousButton?.addEventListener("click", previousSlide, true);
-  nextButton?.addEventListener("click", nextSlide, true);
+  const handleSlideKeydown = (event) => {
+    if (event.target?.closest?.("input, textarea, select, [contenteditable='true']")) return;
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      previousSlide();
+    }
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      nextSlide();
+    }
+  };
+  frameWindow.addEventListener("keydown", handleSlideKeydown, true);
+  previousButton?.addEventListener("click", handlePreviousSlide, true);
+  nextButton?.addEventListener("click", handleNextSlide, true);
 
   const beginImageInteraction = (event) => {
     const target = event.target;
@@ -333,6 +356,8 @@ export async function mountPresentationEditor({
 
   return {
     editor,
+    previousSlide,
+    nextSlide,
     updateTextContent,
     updateTextStyle,
     undo,
@@ -341,8 +366,9 @@ export async function mountPresentationEditor({
     getProjectData,
     getPreviewHtml,
     destroy() {
-      previousButton?.removeEventListener("click", previousSlide, true);
-      nextButton?.removeEventListener("click", nextSlide, true);
+      frameWindow.removeEventListener("keydown", handleSlideKeydown, true);
+      previousButton?.removeEventListener("click", handlePreviousSlide, true);
+      nextButton?.removeEventListener("click", handleNextSlide, true);
       hostDocument.removeEventListener("pointerdown", beginImageInteraction, true);
       hostDocument.removeEventListener("pointermove", moveImageInteraction, true);
       hostDocument.removeEventListener("pointerup", finishImageInteraction, true);
