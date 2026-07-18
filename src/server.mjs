@@ -11,9 +11,10 @@ import { chromium } from "playwright-core";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publicDir = path.join(root, "public");
 const args = process.argv.slice(2);
-const fixturePath = path.resolve(readArg("--fixture-file") || path.join(root, "fixtures", "grove-deck.html"));
+const fixtureFileArg = readArg("--fixture-file");
+const fixturePathOverride = fixtureFileArg ? path.resolve(fixtureFileArg) : null;
 const fixtureGeneratorPath = path.join(root, "fixtures", "fixture-generator.mjs");
-const templateDir = path.join(root, "templates", "grove");
+const templateRoot = path.join(root, "templates");
 const port = Number(readArg("--port") || process.env.PORT || 4318);
 const dataDir = path.resolve(
   readArg("--data-dir") || process.env.AI_PRESENTATION_DATA_DIR || path.join(root, ".app-data"),
@@ -28,6 +29,38 @@ let activeGeneration = null;
 let shuttingDown = false;
 const projectOperations = new Map();
 const fixturePdfFailures = new Set();
+const templates = [
+  {
+    id: "zhangzara-grove",
+    name: "Grove",
+    description: "森林绿画布、米白文字、古典衬线标题和少量锈红强调色。",
+    directory: "grove",
+  },
+  {
+    id: "zhangzara-blue-professional",
+    name: "Blue Professional",
+    description: "米白纸张、亮钴蓝强调和现代无衬线商务版式。",
+    directory: "blue-professional",
+  },
+  {
+    id: "zhangzara-biennale-yellow",
+    name: "Biennale Yellow",
+    description: "高饱和黄色画布、黑色编辑式排版和艺术展览海报结构。",
+    directory: "biennale-yellow",
+  },
+  {
+    id: "zhangzara-cobalt-grid",
+    name: "Cobalt Grid",
+    description: "奶油色网格纸、钴蓝衬线标题和严谨的研究出版物结构。",
+    directory: "cobalt-grid",
+  },
+  {
+    id: "zhangzara-studio",
+    name: "Studio",
+    description: "近黑画布、电光黄文字和高对比设计工作室构图。",
+    directory: "studio",
+  },
+];
 
 const app = express();
 app.disable("x-powered-by");
@@ -45,14 +78,7 @@ app.get("/api/health", (_req, res) => {
 });
 
 app.get("/api/templates", (_req, res) => {
-  res.json([
-    {
-      id: "zhangzara-grove",
-      name: "Grove",
-      description: "森林绿画布、米白文字、古典衬线标题和少量锈红强调色。",
-      status: "qualified-prototype",
-    },
-  ]);
+  res.json(templates.map(({ directory: _directory, ...template }) => template));
 });
 
 app.get("/api/projects", async (_req, res, next) => {
@@ -127,7 +153,7 @@ app.patch("/api/projects/:id", async (req, res, next) => {
       return;
     }
 
-    const prepared = preparePreviewHtml(html);
+    const prepared = preparePreviewHtml(html, project.templateId);
     project.html = prepared.html;
     project.report = prepared.report;
     project.projectData = projectData;
@@ -214,7 +240,8 @@ app.post("/api/projects/:id/exports/pdf", async (req, res, next) => {
 
 app.post("/api/generations", async (req, res) => {
   const source = typeof req.body?.source === "string" ? req.body.source.trim() : "";
-  const templateId = req.body?.templateId === "zhangzara-grove" ? req.body.templateId : "";
+  const template = templates.find((candidate) => candidate.id === req.body?.templateId);
+  const templateId = template?.id || "";
   if (!source) {
     res.status(400).json({ error: "请先粘贴源材料。" });
     return;
@@ -234,7 +261,7 @@ app.post("/api/generations", async (req, res) => {
     name: deriveProjectName(source),
     source,
     templateId,
-    templateName: "Grove",
+    templateName: template.name,
     status: "生成中",
     createdAt: now,
     updatedAt: now,
@@ -460,8 +487,8 @@ async function runGeneration(project, res, task) {
     send({ type: "stage", stage: "正在生成演示文稿" });
     const generated =
       generatorMode === "fixture"
-        ? await generateWithFixture(project.source, project.generation.attempt, task)
-        : await generateWithCodex(project.source, send, task);
+        ? await generateWithFixture(project.source, project.generation.attempt, task, project.templateId)
+        : await generateWithCodex(project.source, send, task, project.templateId);
 
     throwIfGenerationCanceled(task);
 
@@ -471,7 +498,7 @@ async function runGeneration(project, res, task) {
     }
     throwIfGenerationCanceled(task);
 
-    const { html, report } = preparePreviewHtml(generated);
+    const { html, report } = preparePreviewHtml(generated, project.templateId);
     throwIfGenerationCanceled(task);
     task.acceptingCancel = false;
 
@@ -553,7 +580,13 @@ async function terminateProcessTree(child) {
   });
 }
 
-function generateWithFixture(source, attempt, task) {
+function generateWithFixture(source, attempt, task, templateId) {
+  const template = templates.find((candidate) => candidate.id === templateId);
+  const fixturePath =
+    fixturePathOverride ||
+    (template?.id === "zhangzara-grove"
+      ? path.join(root, "fixtures", "grove-deck.html")
+      : path.join(templateRoot, template?.directory || "", "example.html"));
   const fixtureDelay = source.includes("[fixture:slow]") ? 5000 : 60;
   const shouldFail =
     source.includes("[fixture:fail]") ||
@@ -595,8 +628,8 @@ function generateWithFixture(source, attempt, task) {
   });
 }
 
-function preparePreviewHtml(input) {
-  let html = normalizePageCounter(normalizeTemplateImage(extractCompleteHtml(input)));
+function preparePreviewHtml(input, templateId) {
+  let html = normalizePageCounter(normalizeTemplateImage(extractCompleteHtml(input)), templateId);
   const forbidden = [
     [/file:\/\//i, "HTML 包含本地文件地址。"],
     [/<form\b/i, "HTML 包含表单。"],
@@ -611,19 +644,33 @@ function preparePreviewHtml(input) {
     if (pattern.test(html)) throw new Error(message);
   }
 
+  const editableImages = Array.from(
+    html.matchAll(/<img\b[^>]*\bdata-editable-image(?=[\s=>])[^>]*>/gi),
+    (match) => match[0],
+  );
   const slideCount = countSlides(html);
-  const editableImageCount = (html.match(/<img\b[^>]*data-editable-image/gi) || []).length;
+  const editableImageCount = editableImages.length;
   if (slideCount < 2) throw new Error("HTML 没有形成多页演示文稿。");
   if (editableImageCount < 1) throw new Error("HTML 没有兼容的普通内容图片。");
+  const hasNonSelfContainedImage = editableImages.some((image) => {
+    const srcMatch = image.match(/\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+    const src = (srcMatch?.[1] || srcMatch?.[2] || srcMatch?.[3] || "").trim();
+    return !/^data:image\//i.test(src);
+  });
+  if (hasNonSelfContainedImage) {
+    throw new Error("普通内容图片必须使用自包含 data:image 来源。");
+  }
+
+  html = prepareSelfContainedHtml(html, "HTML 兼容性检查失败");
 
   const csp = [
     "default-src 'none'",
-    "img-src data: blob: https:",
-    "font-src data: https:",
-    "style-src 'unsafe-inline' https:",
+    "img-src data: blob:",
+    "font-src data:",
+    "style-src 'unsafe-inline'",
     "script-src 'unsafe-inline'",
     "connect-src 'none'",
-    "media-src data: https:",
+    "media-src data: blob:",
     "object-src 'none'",
     "frame-src 'none'",
     "form-action 'none'",
@@ -642,16 +689,31 @@ function preparePreviewHtml(input) {
   };
 }
 
-function normalizePageCounter(html) {
+function normalizePageCounter(html, templateId) {
   if (/data-slide-counter(?:\s|=|>)/i.test(html)) return html;
 
-  const counter = /(<[^>]+\bid=["']slide-counter["'][^>]*)(>)/i;
-  if (!counter.test(html)) throw new Error("HTML 没有兼容的当前页码。");
-  html = html.replace(counter, "$1 data-slide-counter$2");
+  const counter =
+    /(<[^>]+(?:\bid=["'](?:slide-counter|slideCounter)["']|\bclass=["'][^"']*\bslide-counter\b[^"']*["'])[^>]*)(>)/i;
+  let generated = false;
+  if (counter.test(html)) {
+    html = html.replace(counter, "$1 data-slide-counter$2");
+  } else {
+    const slideCount = countSlides(html);
+    const markup =
+      '<div id="product-slide-counter" data-slide-counter data-product-page-counter-generated>1 / ' +
+      slideCount +
+      "</div>";
+    html = html.replace(/<\/body>/i, markup + "</body>");
+    generated = true;
+  }
 
+  const shouldStyle = generated || templateId === "zhangzara-grove";
+  if (!shouldStyle) return html;
+
+  const selector = generated ? "[data-product-page-counter-generated]" : "[data-slide-counter]";
   const style = [
     "<style data-product-page-counter>",
-    "#slide-counter{",
+    selector + "{",
     "display:block!important;position:fixed!important;right:24px!important;top:18px!important;",
     "z-index:9999!important;padding:8px 12px!important;border-radius:999px!important;",
     "color:#f7f4e8!important;background:rgba(20,35,24,.86)!important;",
@@ -659,7 +721,26 @@ function normalizePageCounter(html) {
     "}",
     "</style>",
   ].join("");
-  return html.replace(/<\/head>/i, style + "</head>");
+  html = html.replace(/<\/head>/i, style + "</head>");
+  if (!generated) return html;
+
+  const script = [
+    "<script data-product-page-counter>",
+    "(()=>{",
+    'const slides=[...document.querySelectorAll(".slide")];',
+    'const counter=document.querySelector("[data-product-page-counter-generated]");',
+    "const update=()=>{",
+    'let index=slides.findIndex((slide)=>slide.classList.contains("active")||slide.classList.contains("is-active"));',
+    "if(index<0) index=0;",
+    'counter.textContent=(index+1)+" / "+slides.length;',
+    "};",
+    'new MutationObserver(update).observe(document.body,{attributes:true,subtree:true,attributeFilter:["class","style"]});',
+    'document.addEventListener("keydown",()=>setTimeout(update,0));',
+    "update();",
+    "})();",
+    "</script>",
+  ].join("");
+  return html.replace(/<\/body>/i, script + "</body>");
 }
 
 function normalizeTemplateImage(html) {
@@ -681,13 +762,16 @@ function normalizeTemplateImage(html) {
   const image =
     '<img data-editable-image="true" alt="内置演示图片" src="' +
     src +
-    '" style="position:absolute;left:55%;top:21%;width:38%;height:auto;object-fit:cover;border-radius:4px;" />';
+    '" style="position:absolute;left:55%;top:21%;width:38%;height:auto;object-fit:cover;border-radius:4px;z-index:9;" />';
 
   const placeholder = /<div\s+class=["']img-placeholder["'][^>]*>[\s\S]*?<\/div>/i;
   if (placeholder.test(html)) return html.replace(placeholder, image);
 
-  const firstSlideEnd = html.search(/<\/section>/i);
-  if (firstSlideEnd >= 0) return html.slice(0, firstSlideEnd) + image + html.slice(firstSlideEnd);
+  const firstSlide = html.match(/<(?:section|div)\b[^>]*class=["'][^"']*\bslide\b[^"']*["'][^>]*>/i);
+  if (firstSlide?.index !== undefined) {
+    const insertionPoint = firstSlide.index + firstSlide[0].length;
+    return html.slice(0, insertionPoint) + image + html.slice(insertionPoint);
+  }
   throw new Error("模板没有可以放置普通内容图片的幻灯片。");
 }
 
@@ -707,7 +791,7 @@ function countSlides(html) {
   ).length;
 }
 
-function prepareSelfContainedHtml(html) {
+function prepareSelfContainedHtml(html, errorPrefix = "HTML 导出失败") {
   const selfContained = html.replace(
     /<link\b(?=[^>]*\bhref=["']https?:\/\/)[^>]*>\s*/gi,
     "",
@@ -718,7 +802,7 @@ function prepareSelfContainedHtml(html) {
     /@import\s+(?:url\()?\s*["']?https?:\/\//i,
   ];
   if (externalResources.some((pattern) => pattern.test(selfContained))) {
-    throw new Error("HTML 导出失败：演示仍包含未内嵌的外部资源。请重新生成后重试。");
+    throw new Error(errorPrefix + "：演示仍包含未内嵌的外部资源。请重新生成后重试。");
   }
   return selfContained;
 }
@@ -776,8 +860,8 @@ async function renderProjectPdf(html) {
       content: [
         "@page{size:13.333333in 7.5in;margin:0}",
         "html,body{margin:0!important;padding:0!important;width:100%!important;height:auto!important;overflow:visible!important}",
-        "#deck{display:block!important;width:100%!important;height:auto!important;transform:none!important;transition:none!important}",
-        ".slide{display:block!important;box-sizing:border-box!important;width:100vw!important;height:100vh!important;min-height:100vh!important;max-height:100vh!important;overflow:hidden!important;break-after:page!important;page-break-after:always!important;animation:none!important}",
+        "#deck,.deck,.stage{position:static!important;inset:auto!important;display:block!important;width:100%!important;height:auto!important;min-height:0!important;overflow:visible!important;transform:none!important;transition:none!important}",
+        ".slide{position:relative!important;inset:auto!important;top:auto!important;right:auto!important;bottom:auto!important;left:auto!important;display:block!important;box-sizing:border-box!important;width:100vw!important;height:100vh!important;min-height:100vh!important;max-height:100vh!important;overflow:hidden!important;opacity:1!important;visibility:visible!important;pointer-events:auto!important;transform:none!important;z-index:auto!important;flex:none!important;break-after:page!important;page-break-after:always!important;animation:none!important}",
         ".slide:last-of-type{break-after:auto!important;page-break-after:auto!important}",
         "nav{display:none!important}",
         "[data-anim]{opacity:1!important;visibility:visible!important;transform:none!important;clip-path:none!important}",
@@ -814,11 +898,13 @@ function pdfExportError(error) {
   return "PDF 导出失败：本地浏览器未能完成渲染。项目已经保存，可以继续使用并重试。";
 }
 
-async function generateWithCodex(source, send, task) {
+async function generateWithCodex(source, send, task, templateId) {
+  const template = templates.find((candidate) => candidate.id === templateId);
+  const templateDir = path.join(templateRoot, template?.directory || "");
   const skillPath = path.join(templateDir, "SKILL.md");
   const examplePath = path.join(templateDir, "example.html");
   if (!existsSync(skillPath) || !existsSync(examplePath)) {
-    throw new Error("Grove 正式模板资产尚未安装。请先完成模板接入。");
+    throw new Error((template?.name || "所选") + " 正式模板资产尚未安装。请先完成模板接入。");
   }
 
   const command = process.platform === "win32" ? process.env.ComSpec || "cmd.exe" : "codex";
@@ -901,11 +987,11 @@ async function generateWithCodex(source, send, task) {
     });
   });
 
-  child.stdin.end(buildCodexPrompt(source));
+  child.stdin.end(buildCodexPrompt(source, template));
   return completed;
 }
 
-function buildCodexPrompt(source) {
+function buildCodexPrompt(source, template) {
   return [
     "你是一个无对话的 HTML 演示文稿生成器。不要向用户提问。",
     "先完整读取当前目录的 SKILL.md 和 example.html。",
@@ -914,7 +1000,7 @@ function buildCodexPrompt(source) {
     "不要引用本地文件，不要加入表单、下载、新窗口、外部脚本或外部 API。",
     "至少保留一张普通 img 内容图片，并为其添加 data-editable-image 属性；图片必须是自包含 data URI。",
     "最终回复只能包含完整 artifact，不要 Markdown 代码围栏，不要解释：",
-    '<artifact identifier="zhangzara-grove" type="text/html" title="Deck Title">',
+    '<artifact identifier="' + template.id + '" type="text/html" title="Deck Title">',
     "<!doctype html><html>...</html>",
     "</artifact>",
     "",

@@ -48,7 +48,7 @@ export async function mountPresentationEditor({
   const hostDocument = container.ownerDocument;
   const handleLayer = createHandleLayer(hostDocument);
   const handles = Array.from(handleLayer.querySelectorAll("[data-resize-handle]"));
-  const deck = frameDocument.querySelector("#deck");
+  const deck = frameDocument.querySelector("#deck, .deck, .stage");
   const slides = Array.from(frameDocument.querySelectorAll(".slide"));
   const counter = frameDocument.querySelector("[data-slide-counter]");
   let currentSlide = 0;
@@ -126,7 +126,7 @@ export async function mountPresentationEditor({
     clearSelectionOutline(frameDocument);
 
     if (editableText) {
-      selectedComponent = component;
+      selectedComponent = closestComponentForElement(component, editableText);
       selectedKind = "text";
       markSelected();
       notifySelection();
@@ -181,10 +181,26 @@ export async function mountPresentationEditor({
   };
 
   const showSlide = (next) => {
-    if (!deck || !slides.length) return;
+    if (!slides.length) return;
     currentSlide = clamp(next, 0, slides.length - 1);
-    deck.style.transform = "translateX(-" + currentSlide * 100 + "vw)";
-    if (counter) counter.textContent = currentSlide + 1 + " / " + slides.length;
+    if (deck?.id === "deck") {
+      deck.style.transform = "translateX(-" + currentSlide * 100 + "vw)";
+    } else {
+      slides.forEach((slide, index) => {
+        slide.classList.toggle("active", index === currentSlide);
+        slide.classList.toggle("prev", index < currentSlide);
+      });
+    }
+    if (counter) {
+      const currentValue = counter.querySelector("#current");
+      const totalValue = counter.querySelector("#total");
+      if (currentValue && totalValue) {
+        currentValue.textContent = String(currentSlide + 1);
+        totalValue.textContent = String(slides.length);
+      } else {
+        counter.textContent = currentSlide + 1 + " / " + slides.length;
+      }
+    }
     onSlideChange({
       current: currentSlide + 1,
       total: slides.length,
@@ -470,6 +486,14 @@ function findEditableText(target) {
   const editable = target.closest(EDITABLE_TEXT_SELECTOR);
   if (!editable || !editable.closest(".slide")) return null;
   return editable;
+}
+
+function closestComponentForElement(component, element) {
+  let candidate = component;
+  while (candidate && candidate.getEl() !== element) {
+    candidate = candidate.parent();
+  }
+  return candidate || component;
 }
 
 function findEditableImage(target) {

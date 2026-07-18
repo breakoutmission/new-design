@@ -1,6 +1,6 @@
 # AI Presentation Studio 产品经理求职证据库
 
-更新时间：2026-07-16
+更新时间：2026-07-18
 维护方式：由本仓库中的后续 Agent 按 [`docs/agents/pm-career-evidence.md`](agents/pm-career-evidence.md) 持续维护
 
 ## 这份文档有什么用
@@ -94,18 +94,18 @@
 
 | 编号 | 假设 | 当前状态 | 已有证据 | 仍缺什么 |
 | --- | --- | --- | --- | --- |
-| H-01 | Open Design 的 zhangzara 模板可以经 Codex 生成并进入 GrapesJS 编辑 | `VERIFIED`，但仅限 Grove | 原型分支 `codex/prototype-open-design-grapesjs`；Commit [`b71709d`](https://github.com/breakoutmission/new-design/commit/b71709d) | 其余 4 个模板仍需逐一资格验收 |
-| H-02 | GrapesJS 能满足首版文字和普通图片编辑约束 | `VERIFIED`，Grove 正式链路 | 原型与提交 [`1164d76`](https://github.com/breakoutmission/new-design/commit/1164d76) 验证基础编辑；用户人工复验发现真实 Grove CSS 保真缺口后，[Issue #8](https://github.com/breakoutmission/new-design/issues/8) 与提交 [`49e0bb8`](https://github.com/breakoutmission/new-design/commit/49e0bb8) 补充真实样式和元素可见性回归 | 其余 4 个模板仍需逐一验证；不能泛化为通用 HTML 编辑能力 |
-| H-03 | 编辑状态可以保存并重新打开 | `VERIFIED`，Grove 正式链路 | [Issue #3](https://github.com/breakoutmission/new-design/issues/3) 验收基础恢复；[Issue #8](https://github.com/breakoutmission/new-design/issues/8) 进一步把 Grove 原始样式纳入结构化项目状态，并验证背景、间距、动画文字和文字修改在保存重开后仍一致 | 尚未验证应用完全退出后的跨进程恢复，也未覆盖其余 4 个模板 |
-| H-04 | 可以从已保存状态导出独立翻页 HTML 和多页 PDF | `VERIFIED`，仅限 Grove、本地 Windows 和所测场景 | [Issue #5](https://github.com/breakoutmission/new-design/issues/5)、验收提交 [`e70bfca`](https://github.com/breakoutmission/new-design/commit/e70bfca1c96152987d4cd8a42ee4bdc1ef198397)；测试确认两种导出先保存，离线 HTML 可翻页，后端 PDF 为 3 页、每页 960×540 点，并覆盖渲染失败后的重开重试 | 其余 4 个模板、真实 5 页项目、不同 Windows 环境和长期重复稳定性仍未验证 |
-| H-05 | “完整 HTML”是首周最快的生成契约 | `DECIDED`，有单模板证据支持 | Grove 完整链路跑通；[ADR-0012](adr/0012-use-full-html-generation-for-one-week-mvp.md) | 还需验证 5 个模板的重复稳定性；长期成本仍可能促使迁移 |
-| H-06 | 一次真实 Codex 生成的等待时间和 Token 成本可接受用于现场 MVP 演示 | `VERIFIED` 一次，不代表稳定承诺 | 一次真实运行约 3 分 45 秒，并保留 Token 诊断数据 | 需要多次测量、失败率和真实演示容忍度 |
+| H-01 | Open Design 的 zhangzara 模板可以经 Codex 生成并进入 GrapesJS 编辑 | `VERIFIED`，五个首发模板、本地 Windows 和各一次真实资格运行 | [Issue #6](https://github.com/breakoutmission/new-design/issues/6)、[`docs/issue-6-five-template-qualification.md`](issue-6-five-template-qualification.md) 与五模板固定/真实浏览器测试 | 每个模板只有一次真实资格运行，不能写成长期稳定率或任意模板兼容 |
+| H-02 | GrapesJS 能满足首版文字和普通图片编辑约束 | `VERIFIED`，五个首发模板的所测链路 | Issue #3 / #8 建立 Grove 编辑与保真基线；Issue #6 进一步验证五模板文字、后续页普通图片、锁定边界、保存与重开 | 不能泛化为通用 HTML 编辑器；任意 HTML 导入仍明确不做 |
+| H-03 | 编辑状态可以保存并重新打开 | `VERIFIED`，五个首发模板、同一服务进程 | Issue #3 / #8 建立恢复机制；Issue #6 固定结果和真实 Codex 项目均完成保存、返回首页和重开 | 尚未验证应用完全退出后的跨进程恢复或长期反复编辑 |
+| H-04 | 可以从已保存状态导出独立翻页 HTML 和多页 PDF | `VERIFIED`，五个首发模板、本地 Windows 和所测场景 | Issue #5 建立保存先行与失败重试；Issue #6 固定和真实结果均验证离线 HTML 翻页、逐页 PDF、当前编辑文字与代表背景 | 未验证其他操作系统、长期重复导出或外部用户交付效果 |
+| H-05 | “完整 HTML”是首周最快的生成契约 | `DECIDED`，有五模板单次资格证据支持 | [ADR-0012](adr/0012-use-full-html-generation-for-one-week-mvp.md)；Issue #6 记录五次真实生成耗时与 Token | 完整 HTML 的耗时和 Token 代价明显；仍需重复稳定性与下一阶段结构化内容对比 |
+| H-06 | 真实 Codex 生成的等待时间和 Token 成本可接受用于现场 MVP 演示 | `HYPOTHESIS`，但已记录五个样本暴露风险 | 五次资格运行约 364–496 秒，input、cached、output、reasoning usage 均已保存且模板间差异明显 | 需要用户确认现场等待容忍度、更多重复运行和失败率；不能从 usage 推断账单 |
 | H-07 | 任意来源 HTML 可以通过能力检查后安全编辑 | `HYPOTHESIS` 且首周暂缓 | 已定义未来采用“先检查，不兼容就拒绝”的方向 | 尚未实现，也没有不同来源 HTML 样本验证 |
 | H-08 | 产品能减少制作时间、降低学习成本并提高求职演示质量 | `HYPOTHESIS` | 当前只有产品作者的真实需求 | 需要基线时间、任务测试、用户反馈和结果对比 |
 | H-09 | 其他求职者或非技术用户也有相同需求 | `HYPOTHESIS` | 暂无外部用户证据 | 需要目标用户访谈、招募测试或真实使用 |
-| H-10 | THROWAWAY 原型中的 Grove 生成方案可以选择性迁移为正式应用，而无需合并原型分支 | `VERIFIED`，单模板正式切片 | [Issue #2](https://github.com/breakoutmission/new-design/issues/2) 与提交 [`471a980`](https://github.com/breakoutmission/new-design/commit/471a980)；固定结果浏览器测试和真实 Grove 回放均通过 | 完整 MVP、其余 4 个模板与真实材料完整演示仍未完成 |
+| H-10 | THROWAWAY 原型中的 Grove 生成方案可以选择性迁移为正式应用，而无需合并原型分支 | `VERIFIED`，并已扩展为五个独立模板包 | [Issue #2](https://github.com/breakoutmission/new-design/issues/2) 建立正式 Grove；Issue #6 只复制四个固定来源模板包并复用同一产品契约 | 最终真实材料演示和外部用户价值仍未完成 |
 | H-11 | 生成失败或取消后可以保留原输入、避免残缺结果并继续重试；删除与重新生成等操作不会互相覆盖 | `VERIFIED`，Grove 正式链路与本地 Windows | [Issue #4](https://github.com/breakoutmission/new-design/issues/4)、提交 [`4a3f822`](https://github.com/breakoutmission/new-design/commit/4a3f822)、[`tests/browser/recovery.mjs`](../tests/browser/recovery.mjs) 和 [`tests/browser/real-cancel.mjs`](../tests/browser/real-cancel.mjs) | 失败路径主要由固定生成器验证；真实 Codex 只验证取消，不代表已测得长期失败率，也未覆盖其余 4 个模板 |
-| H-12 | 简化固定夹具通过就足以代表真实 Grove 的视觉保真 | `REJECTED` | 用户人工验收连续发现背景/间距丢失和动画文字透明；[Issue #8](https://github.com/breakoutmission/new-design/issues/8) 将真实 Grove CSS、保存重开一致和元素可见性加入回归；Issue #5 又在导出 PDF 中检查代表性背景与动画中文标题 | 仍需把同类视觉保真验收推广到其余 4 个模板和真实材料完整流程 |
+| H-12 | 简化固定夹具通过就足以代表真实模板的视觉保真 | `REJECTED`，并已将双轨验收推广到五模板 | Issue #8 建立 Grove 真实 CSS 回归；Issue #6 同时使用固定结果日常回归和五次真实 Codex 资格运行，并检查代表背景、编辑、重开与导出 | 单次真实资格仍不能代表长期稳定性或所有材料 |
 
 ---
 
@@ -141,7 +141,7 @@
 
 - **决定**：Grove 先打通启动、生成、预览、编辑、保存和导出，再让其余 4 个模板逐一通过资格验收。
 - **降低的风险**：最早暴露各模块组合问题，并尽快获得可展示成果。
-- **当前进展**：正式分支已完成 Grove 的启动、生成、安全预览、编辑、保存、重新打开、失败/取消恢复、单生成任务限制，以及删除和重新生成确认；用户对 Issue #3 的人工复验暴露真实 CSS 保真缺口后，回归 Bug #8 已修复并关闭。Issue #5 已在独立 worktree 从共同基线 `4a3f822` 完成正式 HTML/PDF 导出验收并关闭，提交为 `e70bfca`；其余 4 个模板和真实材料完整演示仍未完成。
+- **当前进展**：Grove 纵向链路、CSS 保真、HTML/PDF 导出和多页编辑阻断问题均已完成；Issue #6 又把 Blue Professional、Biennale Yellow、Cobalt Grid、Studio 接入同一契约，并让五个模板分别通过一次真实 Codex 生成、编辑、保存重开、离线 HTML 和 PDF。剩余正式纵向任务是 Issue #7 的真实材料完整演示；五模板长期稳定性和外部用户价值仍未验证。
 - **证据**：[Issue #2](https://github.com/breakoutmission/new-design/issues/2)、[Issue #3](https://github.com/breakoutmission/new-design/issues/3)、[Issue #4](https://github.com/breakoutmission/new-design/issues/4)、[Issue #5](https://github.com/breakoutmission/new-design/issues/5)、[Issue #8](https://github.com/breakoutmission/new-design/issues/8)。
 
 ---
@@ -159,7 +159,8 @@
 | 简化固定夹具通过却掩盖真实模板的视觉兼容问题 | 将用户人工反馈注册为关联 #3 且阻塞 #5 的 Bug；用真实 Grove CSS 特征补充深浅背景、复合渐变、水平/垂直间距、动画文字可见和保存重开回归 | Grove 的已知 CSS 解析与动画透明风险已转为自动验收，真实 6 页项目也在只读临时副本中通过 | [Issue #8 验收记录](https://github.com/breakoutmission/new-design/issues/8#issuecomment-4990045265)、提交 [`49e0bb8`](https://github.com/breakoutmission/new-design/commit/49e0bb8) |
 | 生成 HTML 可能访问本地或主应用 | 提前定义严格安全预览边界，并用代表性禁止行为做浏览器测试 | Grove 正式基础已验证阻止主应用访问、外部请求和新窗口，同时保留必要翻页脚本 | [ADR-0007](adr/0007-strict-sandbox-for-html-preview.md)、[Issue #2](https://github.com/breakoutmission/new-design/issues/2)、提交 [`471a980`](https://github.com/breakoutmission/new-design/commit/471a980) |
 | 生成卡住、失败或多个操作同时修改同一项目会丢失材料与编辑 | 把成功、失败、取消、重试、单任务限制、危险操作确认和跨页面冲突写成公开界面验收，并用真实 Codex 取消验证进程确实终止 | Grove 已验证失败/取消不展示残缺 HTML、保留材料与模板、可一步重试；同一项目的删除、保存和重新生成不会互相覆盖 | [Issue #4 验收记录](https://github.com/breakoutmission/new-design/issues/4#issuecomment-4983454339)、提交 [`4a3f822`](https://github.com/breakoutmission/new-design/commit/4a3f822) |
-| 开发任务太大，完成标准模糊 | 把父 Spec 拆成 6 个带依赖和验收标准的纵向子 Issue | Issue #2、#3、#4、#5 已按独立验收闭环完成；后续任务的阻塞关系清楚 | [Spec Issue #1](https://github.com/breakoutmission/new-design/issues/1)、[Issues #2–#7](https://github.com/breakoutmission/new-design/issues) |
+| 模板候选视觉突出但依赖外部脚本 | 先做包级与浏览器资格检查，拒绝为候选放宽安全契约 | Retro Windows 因外部 Chart.js 被淘汰，改选无外部脚本的 Studio；最终五包保留来源与许可证 | [Issue #6](https://github.com/breakoutmission/new-design/issues/6)、[`docs/issue-6-five-template-qualification.md`](issue-6-five-template-qualification.md) |
+| 开发任务太大，完成标准模糊 | 把父 Spec 拆成 6 个带依赖和验收标准的纵向子 Issue | Issue #2–#6 已完成独立交付验收；Issue #7 仍保持明确依赖与范围 | [Spec Issue #1](https://github.com/breakoutmission/new-design/issues/1)、[Issues #2–#7](https://github.com/breakoutmission/new-design/issues) |
 
 这里体现的产品经理价值是：不是等风险发生后救火，而是先找出“最可能让项目失败的假设”，用成本较低的证据逐个消除。
 
@@ -171,7 +172,7 @@
 | --- | --- | --- | --- |
 | 一周 MVP 时间盒 | 1 周 | `DECIDED` | 是范围约束，不是已完成周期 |
 | 首发模板数 | 5 个 | `DECIDED` | 只承诺首发候选数量 |
-| 已完成真实技术验证的模板 | Grove 1 个 | `VERIFIED` | 其余 4 个仍未验证 |
+| 已完成真实技术资格验收的模板 | 5 个 | `VERIFIED`，每个各一次 | 只代表本地 Windows 与本次材料，不是长期稳定率 |
 | Grove 原型幻灯片数 | 12 页 | `VERIFIED` | 不是所有生成结果都固定 12 页 |
 | Grove 原型普通可编辑图片 | 1 个 | `VERIFIED` | 模板装饰、SVG、Logo 不计入 |
 | PDF 原型导出页数 | 12 页 | `VERIFIED` | 页面尺寸为 960×540 点 |
@@ -180,7 +181,7 @@
 | 同一次运行 Token | 累计输入 186,633，其中缓存输入 141,056；输出 10,873 | `VERIFIED` 一次 | 是诊断数据，不能直接等同账单金额 |
 | 当前 ADR 数量 | 12 个 | `VERIFIED` | 截至 2026-07-16 |
 | 正式 Grove 回放结果 | 8 页、1 个可编辑图片元素 | `VERIFIED` | 属于正式基础分支的真实输出回放，不等同完整编辑链路 |
-| 正式开发子 Issue | 6 个，其中 4 个已关闭 | `VERIFIED` | 按任务数量是 4/6；不同 Issue 工作量不同，不能当作精确工期完成率 |
+| 正式开发子 Issue | 6 个，其中 5 个已完成交付验收 | `VERIFIED` | 按任务数量是 5/6；不同 Issue 工作量不同，不能当作精确工期完成率 |
 | 正式 Grove 编辑与保存恢复 | 文字样式、图片编辑、撤销/重做、保存和重新打开均通过公开浏览器测试 | `VERIFIED`，单模板 | [Issue #3](https://github.com/breakoutmission/new-design/issues/3)、提交 [`1164d76`](https://github.com/breakoutmission/new-design/commit/1164d76) |
 | 真实 Grove CSS 编辑保真 | 深浅背景、复合渐变、水平/垂直间距、动画文字可见和文字修改在保存重开后保持一致 | `VERIFIED`，单模板与本地 Windows | [Issue #8](https://github.com/breakoutmission/new-design/issues/8)、提交 [`49e0bb8`](https://github.com/breakoutmission/new-design/commit/49e0bb8)、[`tests/browser/grove-css-fidelity.mjs`](../tests/browser/grove-css-fidelity.mjs) |
 | 正式 Grove 生成恢复与受保护操作 | 成功、正常取消、完成阶段取消、失败、重试、单任务限制、生成期间编辑其他项目、删除确认和重新生成确认均通过公开浏览器测试 | `VERIFIED`，单模板与本地 Windows | [Issue #4](https://github.com/breakoutmission/new-design/issues/4)、提交 [`4a3f822`](https://github.com/breakoutmission/new-design/commit/4a3f822)；真实 Codex 取消测试验证对应进程树终止 |
@@ -202,9 +203,9 @@
 | 取舍与决策 | 在完整 HTML 与结构化内容间先用原型取证，再做阶段性选择 | 强：有实测代价和 ADR |
 | 风险管理 | 在正式开发前验证最危险的跨系统链路，把日常测试与真实生成分层，并对取消、失败、并行修改和破坏性操作设置恢复或确认机制 | 强：原型、分层测试、真实进程终止和跨页面冲突测试均有证据 |
 | 需求沉淀与协作 | 把口头讨论统一为 `CONTEXT.md`、ADR、Spec 和 GitHub 子任务 | 强：文档与 Issue 可检查 |
-| 验收意识 | 用可观察行为定义完成，而不是只看代码是否存在 | 强：四个正式纵向切片均以公开浏览器行为和 GitHub 验收记录闭环 |
+| 验收意识 | 用可观察行为定义完成，而不是只看代码是否存在 | 强：五个正式纵向切片均以公开浏览器行为和可追溯证据闭环 |
 | 数据与诚实边界 | 主动保留生成耗时、Token、页数和未验证项，不虚构业务效果 | 强：有指标台账和限制说明 |
-| 交付推进 | 采用 Grove 纵向切片，依次交付生成基础、编辑/保存、失败恢复/受保护操作和 HTML/PDF 导出 | 强：前四个正式切片已完成，完整 MVP 仍缺其余 4 个模板和真实材料演示 |
+| 交付推进 | 采用 Grove 纵向切片，依次交付生成、编辑/保存、失败恢复、导出和五模板资格验收 | 强：前五个正式切片已完成，完整 MVP 仍缺 Issue #7 真实材料演示 |
 
 ---
 
@@ -222,13 +223,13 @@
    基于真实原型在“完整 HTML”与“结构化内容”间完成阶段性取舍，将用户、范围、代价和安全边界沉淀为 `CONTEXT.md`、12 个 ADR、正式 GitHub Spec 与纵向子任务，推动项目从模糊想法进入可验收开发。
 
 4. **纵向拆解与正式交付**
-   将 71 条用户故事拆为 6 个带依赖的纵向子 Issue，驱动 AI Agent 以公开浏览器行为连续完成 Grove 的生成基础、编辑保存、失败恢复和 HTML/PDF 导出四个正式切片；其中导出验收覆盖保存先行、离线 HTML 翻页、后端逐页 PDF 与渲染失败重试，并由 Issue、Commit 与 Playwright 测试形成证据闭环。
+   将 71 条用户故事拆为 6 个带依赖的纵向子 Issue，驱动 AI Agent 以公开浏览器行为连续完成生成、编辑保存、失败恢复、HTML/PDF 导出和五模板资格验收五个正式切片；模板验收同时覆盖固定回归与五次真实 Codex 全链路，并由 Issue、Commit、Playwright 与 usage 记录形成证据闭环。
 
 ### 暂时不能写成成果的话
 
 - “将演示文稿制作效率提升 X%”——没有前后对照数据。
 - “服务 X 名用户/获得 X% 满意度”——还没有外部用户记录。
-- “支持 5 个模板稳定生成”——目前只验证 Grove。
+- “支持 5 个模板长期稳定生成”——目前只证明五个模板各完成一次真实资格运行，没有长期重复稳定率。
 - “兼容任意 HTML 导入”——功能已暂缓，也没有样本验证。
 - “独立完成全部开发”——代码和文档由 AI Agent 大量协助；更准确的说法是用户负责产品判断、范围与验收，Agent 执行实现和测试。
 
@@ -275,7 +276,7 @@ STAR 是一种面试表达结构：Situation（背景）、Task（任务）、Ac
 - **S 背景**：父 Spec 包含 71 条用户故事，如果按前端、后端、编辑器分别开工，很难判断什么时候出现第一个真正可用结果。
 - **T 任务**：把正式 Spec 变成 Agent 可以独立接手、用户可以逐段验收、失败时影响范围有限的开发计划。
 - **A 行动**：要求先展示拆分粒度和依赖再发布；按用户可见链路拆成 6 个子 Issue，并坚持先 Grove、后其他模板，先固定结果自动测试、再做真实 Codex 验收。
-- **R 结果**：Issue #2、#3、#4 和 #5 已分别用提交 `471a980`、`1164d76`、`4a3f822`、`e70bfca` 和公开浏览器测试完成闭环；正式 Grove 链路已经覆盖启动、生成、安全预览、编辑、保存、重新打开、失败/取消恢复、危险操作确认和 HTML/PDF 导出。其余 4 个模板与真实材料完整演示仍明确留在后续 Issue，未被提前包装成完成。
+- **R 结果**：Issue #2–#6 已分别按纵向边界完成交付验收；正式链路覆盖启动、生成、安全预览、编辑、保存、重开、失败恢复、HTML/PDF，以及五个模板各一次真实 Codex 资格运行。真实材料最终演示仍明确留给 Issue #7，没有被提前包装成完成。
 - **体现能力**：需求拆解、依赖管理、AI Agent 协作、验收设计、交付节奏与诚实边界。
 
 ### 故事 F：为什么“能编辑”还不等于“用户能继续工作”
@@ -333,7 +334,7 @@ STAR 是一种面试表达结构：Situation（背景）、Task（任务）、Ac
 
 1. **用同一份真实求职材料跑完整流程**：保留输入、生成结果、人工修改点、失败/重试情况、导出成果和全过程时间。
 2. **建立旧流程基线**：记录不用本产品制作同等演示需要多久、哪些步骤最痛苦，才能以后计算真实节省时间。
-3. **验证其余 4 个模板**：每个模板记录成功/失败、结构差异和是否需要降级，避免把单模板成功泛化。
+3. **做重复稳定性验证**：五模板当前各只有一次真实资格运行；后续应按相同材料重复运行并记录失败类型，而不是把一次通过写成稳定率。
 4. **邀请 3–5 名目标用户做任务测试**：观察他们是否理解首页、模板选择、编辑、保存和失败恢复，并记录原话与失败点。
 5. **进行一次迭代复盘并形成作品集页面**：说明判断如何被证据改变，并把问题、取舍、结果和反思整理成招聘者可快速阅读的案例。
 
@@ -476,3 +477,23 @@ STAR 是一种面试表达结构：Situation（背景）、Task（任务）、Ac
 - **可用的简历表达**：在固定回归全绿但真实五页 Grove 无法继续编辑时，将两种用户阻断拆成独立验收，驱动 AI Agent 用真实副本、最小夹具和公开浏览器 TDD 完成多页编辑与预览恢复，并以保存重开、离线 HTML、五页 PDF 和原件哈希保护形成可追溯证据。
 - **可用的面试故事**：为什么“旧测试全绿”不能反驳真实用户阻断，以及我怎样先保护原件、再让两个症状稳定失败、区分不同根因，最后把真实结构缩小成可长期提交的回归。
 - **下一次验证**：以 Issue #9 的新综合基线开始 Issue #6 的其余模板资格验收；本线程不提前实施 Issue #6。
+
+### 2026-07-18 — 五个首发模板完成固定与真实 Codex 资格验收
+
+- **阶段**：开发 / 验证 / 交付 / 风险降低
+- **状态**：`VERIFIED`，仅限五个首发模板、本地 Windows、当前 Codex CLI 和各一次真实资格运行
+- **当时的不确定性**：Grove 已打通完整链路，但其余模板可能在嵌套文字、页码、绝对定位、翻页方式、图片层级或 PDF 分页上不兼容；候选模板也可能依赖外部脚本。单模板成功不能支持“五模板可用”的结论。
+- **假设或目标**：完成 Issue #6，让恰好五个来源清楚的模板包分别通过真实生成、文字与普通图片编辑、锁定、保存重开、自包含 HTML 和逐页 PDF，同时原样记录耗时与 Token。
+- **采取的行动**：从 `359c79b` 建立独立 worktree；按浏览器可见行为逐条红绿循环；固定测试覆盖模板选择、代表视觉、编辑页导航、嵌套文字、图片拖动、锁定和导出；再让五个模板各调用一次真实 Codex，并把 usage、截图、HTML 和 PDF 写入诊断证据。
+- **考虑过的替代方案**：保留依赖外部 Chart.js 的 Retro Windows、为候选放宽外部脚本规则、把所有模板改造成 Grove 结构、只看预览或只跑固定夹具。最终淘汰 Retro Windows，改选 Studio，并用统一兼容层支持两类翻页结构和 PDF 打印结构。
+- **决定与取舍**：首发固定为 Grove、Blue Professional、Biennale Yellow、Cobalt Grid、Studio；模板包保留自身提示与示例，应用只统一输出、安全、编辑和导出契约；不加入任意 HTML、模板编辑器或自动配图。
+- **风险怎样降低**：固定来源 commit、MIT 许可证与 NOTICE 降低来源风险；包级测试避免缺文件；固定结果回归承担日常稳定检查；真实 Codex 资格避免把夹具成功泛化；失败后复用已生成项目诊断，避免靠增加 timeout 或重复生成掩盖问题。
+- **可验证结果**：五个模板均完成真实生成、文字编辑、后续页图片拖动、页码装饰锁定、保存、完成编辑、返回首页、重开、离线 HTML 翻页和 PDF；真实结果页数分别为 9、8、8、12、12，五次耗时与 input/cached/output/reasoning usage 均已记录。
+- **仍未验证**：每个模板只有一次真实资格运行；没有长期失败率、平均速度、计费、其他操作系统、任意材料、外部用户效率、满意度或视觉偏好覆盖数据。
+- **用户贡献**：确认 Issue #6 已完成产品决策，不重新访谈；指定固定基线、worktree、分支、TDD/Playwright/诊断/审查门槛、五模板真实验收、精确暂存、GitHub 收尾和证据边界。
+- **Agent / 工具贡献**：核对依赖和规则，筛选并固定模板来源，编写红灯，定位嵌套组件、图片层级、编辑页导航和 PDF 分页根因，实施兼容层，执行五次真实 Codex 验收并维护来源、测试和证据文档。
+- **证据**：[Issue #6](https://github.com/breakoutmission/new-design/issues/6)、[`docs/issue-6-five-template-qualification.md`](issue-6-five-template-qualification.md)、[`tests/template-packages.mjs`](../tests/template-packages.mjs)、[`tests/browser/template-generation.mjs`](../tests/browser/template-generation.mjs)、[`tests/browser/real-templates.mjs`](../tests/browser/real-templates.mjs)。
+- **体现的产品经理能力**：候选淘汰、验收矩阵设计、证据分层、风险前置、范围治理、AI 成本记录、负面证据管理和跨模板交付闭环。
+- **可用的简历表达**：围绕“五个视觉模板能否在同一产品契约下完整交付”驱动 AI Agent 完成模板筛选与资格验收，以逐行为 TDD、五次真实 Codex 运行、离线 HTML/PDF 黑盒检查和许可证追溯建立可复核证据。
+- **可用的面试故事**：为什么我宁可淘汰依赖外部脚本的视觉候选，也不放宽安全契约；以及固定测试、真实生成和 usage 记录怎样共同降低“一次演示碰巧成功”的风险。
+- **下一次验证**：Issue #7 使用 Issue #6 最终提交为固定基线，以同一份真实求职材料完成最终端到端演示并记录人工修正点；五模板重复稳定性和外部用户测试另行验证。
