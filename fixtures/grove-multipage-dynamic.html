@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>多页编辑回归夹具</title>
+    <style>
+      :root { font-family: "Microsoft YaHei", sans-serif; color: #f4f0e6; background: #192b1b; }
+      * { box-sizing: border-box; }
+      body { margin: 0; overflow: hidden; background: #192b1b; }
+      main { display: flex; width: 500vw; height: 100vh; transition: transform .3s ease; }
+      .slide {
+        position: relative;
+        flex: 0 0 100vw;
+        width: 100vw;
+        height: 100vh;
+        display: grid;
+        align-content: center;
+        gap: 24px;
+        padding: 72px;
+        background: #192b1b;
+      }
+      .slide.light { color: #192b1b; background: #e8e4d6; }
+      h1, h2 { margin: 0; font: 500 64px/1.1 Georgia, "Noto Serif SC", serif; }
+      p { margin: 0; font-size: 24px; line-height: 1.5; }
+      [data-anim] { opacity: 0; transform: translateY(12px); }
+      .slide.is-active [data-anim] { opacity: 1; transform: none; }
+      img[data-editable-image] {
+        position: absolute;
+        right: 72px;
+        bottom: 72px;
+        width: 320px;
+        border: 12px solid #f4f0e6;
+      }
+      nav {
+        position: fixed;
+        right: 24px;
+        bottom: 24px;
+        z-index: 5;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px;
+        background: rgba(25, 43, 27, .9);
+      }
+      nav button { color: #f4f0e6; border: 1px solid currentColor; background: transparent; }
+      [data-slide-counter] { min-width: 64px; color: #f4f0e6; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <main id="deck">
+      <section class="slide dark">
+        <h1 data-anim>第一页前景文字</h1>
+        <p data-anim>脚本激活页面后，这段文字和页面导航都应可见。</p>
+      </section>
+      <section class="slide light">
+        <h2 data-anim>第二页可编辑文字</h2>
+        <p data-anim>第二页同时包含一张兼容普通内容图片。</p>
+        <img
+          data-editable-image="true"
+          alt="多页回归普通内容图片"
+          src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='500'%3E%3Crect width='800' height='500' fill='%23192b1b'/%3E%3Ccircle cx='620' cy='130' r='80' fill='%23c8524a'/%3E%3Cpath d='M0 470 190 220 330 350 510 150 760 470Z' fill='%23d4cfbf'/%3E%3C/svg%3E"
+        />
+      </section>
+      <section class="slide dark">
+        <h2 data-anim>第三页回归内容</h2>
+        <p data-anim>用于验证五页项目的中间页保持完整。</p>
+      </section>
+      <section class="slide light">
+        <h2 data-anim>第四页回归内容</h2>
+        <p data-anim>用于验证页码和导航可以继续前进。</p>
+      </section>
+      <section class="slide dark">
+        <h2 data-anim>第五页回归内容</h2>
+        <p data-anim>用于验证真实五页结构的最后一页。</p>
+      </section>
+    </main>
+    <nav aria-label="页面导航">
+      <span data-slide-counter></span>
+      <span data-nav-buttons></span>
+    </nav>
+    <script>
+      (() => {
+        const deck = document.querySelector("main");
+        const slides = Array.from(document.querySelectorAll(".slide"));
+        const counter = document.querySelector("[data-slide-counter]");
+        const controls = document.querySelector("[data-nav-buttons]");
+        let current = 0;
+        const show = (next) => {
+          current = Math.max(0, Math.min(next, slides.length - 1));
+          slides.forEach((slide, index) => slide.classList.toggle("is-active", index === current));
+          deck.style.transform = "translateX(-" + current * 100 + "vw)";
+          counter.textContent = current + 1 + " / " + slides.length;
+        };
+        slides.forEach((_, index) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.setAttribute("aria-label", "第 " + (index + 1) + " 页");
+          button.textContent = String(index + 1);
+          button.addEventListener("click", () => show(index));
+          controls.append(button);
+        });
+        document.addEventListener("keydown", (event) => {
+          if (event.key === "ArrowLeft") show(current - 1);
+          if (event.key === "ArrowRight") show(current + 1);
+        });
+        show(0);
+      })();
+    </script>
+  </body>
+</html>

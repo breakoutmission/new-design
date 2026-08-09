@@ -1,0 +1,33 @@
+{
+  "name": "ai-presentation-studio",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "start:fixture": "node src/server.mjs --fixture",
+    "test:browser": "node tests/browser/launcher.mjs && node tests/browser/foundation.mjs && node tests/browser/grove-css-fidelity.mjs && node tests/browser/multipage-edit-preview.mjs && node tests/browser/recovery.mjs && node tests/browser/export.mjs && pnpm test:browser:templates",
+    "test:browser:launcher": "node tests/browser/launcher.mjs",
+    "test:browser:launcher:windows": "node tests/browser/windows-default-launcher.mjs",
+    "test:browser:foundation": "node tests/browser/foundation.mjs",
+    "test:browser:recovery": "node tests/browser/recovery.mjs",
+    "test:browser:export": "node tests/browser/export.mjs",
+    "test:browser:headed": "node tests/browser/foundation.mjs --headed",
+    "test:browser:real": "node tests/browser/real-grove.mjs",
+    "test:browser:real:cancel": "node tests/browser/real-cancel.mjs",
+    "test:browser:real:replay": "node tests/browser/real-grove.mjs --reuse-latest",
+    "test:browser:grove-css": "node tests/browser/grove-css-fidelity.mjs",
+    "test:browser:multipage": "node tests/browser/multipage-edit-preview.mjs",
+    "test:browser:templates": "node tests/template-packages.mjs && node tests/browser/templates.mjs && node tests/browser/template-generation.mjs && node tests/browser/template-image-compatibility.mjs && node tests/browser/template-editor-navigation.mjs && node tests/browser/template-text-persistence.mjs && node tests/browser/template-image-persistence.mjs && node tests/browser/template-locks.mjs && node tests/browser/template-export.mjs",
+    "test:browser:real:templates": "node tests/browser/real-templates.mjs",
+    "test:browser:real:issue-7": "node tests/browser/real-issue-7.mjs"
+  },
+  "dependencies": {
+    "express": "5.2.1",
+    "grapesjs": "0.23.2",
+    "playwright-core": "1.61.1"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "devDependencies": {
+    "pdfjs-dist": "^6.1.200"
+  }
+}

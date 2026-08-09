@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI 演示工作流</title>
+    <style>
+      :root { font-family: "Microsoft YaHei", sans-serif; color: #d7d0bd; background: #192b1b; }
+      * { box-sizing: border-box; }
+      body { margin: 0; overflow: hidden; }
+      #deck { display: flex; width: 300vw; height: 100vh; transition: transform .45s ease; }
+      .slide {
+        position: relative;
+        flex: 0 0 100vw;
+        height: 100vh;
+        padding: 8vh 8vw;
+        overflow: hidden;
+        background: #192b1b;
+      }
+      .slide.light { color: #192b1b; background: #e8e4d6; }
+      .kicker {
+        color: #c8524a;
+        font: 700 1.5vw/1 monospace;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+      }
+      h1, h2 {
+        max-width: 72vw;
+        margin: 3vh 0 0;
+        font-family: Georgia, "Noto Serif SC", serif;
+        font-weight: 500;
+        line-height: 1.04;
+      }
+      h1 { font-size: 6.7vw; }
+      h2 { font-size: 5vw; }
+      p { max-width: 48vw; margin-top: 4vh; color: inherit; font-size: 1.65vw; line-height: 1.65; }
+      .accent { width: 10vw; height: 1.2vh; margin-top: 6vh; background: #c8524a; }
+      .template-logo, .template-symbol { position: absolute; right: 3vw; top: 4vh; width: 4vw; height: 4vw; }
+      .template-symbol { right: 8vw; fill: #c8524a; }
+      img[data-editable-image] {
+        position: absolute;
+        right: 7vw;
+        bottom: 9vh;
+        width: 34vw;
+        border: 1.2vw solid #d4cfbf;
+        box-shadow: 0 2vh 5vh rgba(0, 0, 0, .28);
+      }
+      .metric { margin-top: 8vh; font: 500 12vw/1 Georgia, serif; }
+      .metric small {
+        display: block;
+        margin-top: 2vh;
+        font: 600 1.3vw/1.4 monospace;
+        letter-spacing: .13em;
+      }
+      nav {
+        position: fixed;
+        right: 2.5vw;
+        bottom: 3vh;
+        z-index: 3;
+        display: flex;
+        align-items: center;
+        gap: 1vw;
+        padding: .8vw 1.2vw;
+        color: #d4cfbf;
+        background: rgba(25, 43, 27, .9);
+      }
+      nav button {
+        width: 2.4vw;
+        height: 2.4vw;
+        color: inherit;
+        border: 1px solid currentColor;
+        background: transparent;
+        cursor: pointer;
+      }
+      [data-slide-counter] { min-width: 4.5vw; text-align: center; font: 600 1vw/1 monospace; }
+      .corner {
+        position: absolute;
+        left: 3vw;
+        bottom: 4vh;
+        width: 5vw;
+        height: 5vw;
+        border-left: .3vw solid #c8524a;
+        border-bottom: .3vw solid #c8524a;
+      }
+    </style>
+  </head>
+  <body tabindex="0">
+    <main id="deck">
+      <section class="slide">
+        <div class="kicker">AI Presentation Studio · 01</div>
+        <h1>AI 演示工作流</h1>
+        <p>把中文产品材料交给本机 Codex，一次生成完整 HTML 演示文稿，再进入安全预览。</p>
+        <div class="accent"></div>
+        <div class="corner"></div>
+        <img
+          class="template-logo"
+          alt="Grove 模板 Logo"
+          src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='50' fill='%23d4cfbf'/%3E%3Cpath d='M50 18 76 72H24Z' fill='%23192b1b'/%3E%3C/svg%3E"
+        />
+        <svg class="template-symbol" role="img" aria-label="Grove 模板 SVG 装饰" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="36"></circle>
+        </svg>
+      </section>
+      <section class="slide light">
+        <div class="kicker">FROM MATERIAL TO DECK · 02</div>
+        <h2>先跑通一条完整链路</h2>
+        <p>首页、新建、选择 Grove、发送、生成阶段、HTML 检查和预览，都必须从浏览器真实完成。</p>
+        <img
+          data-editable-image="true"
+          alt="森林和演示页面的抽象示意"
+          src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='760'%3E%3Crect width='1200' height='760' fill='%23192b1b'/%3E%3Ccircle cx='920' cy='170' r='110' fill='%23c8524a'/%3E%3Cpath d='M0 700 270 330 430 520 690 210 980 700Z' fill='%23d4cfbf'/%3E%3C/svg%3E"
+        />
+      </section>
+      <section class="slide">
+        <div class="kicker">VERIFIABLE RESULT · 03</div>
+        <div class="metric">3<small>完整页面 · 可翻页 · 自包含</small></div>
+        <p>固定生成结果只用于日常测试；最终仍要用真实材料和真实本机 Codex 验收。</p>
+        <div class="corner"></div>
+      </section>
+    </main>
+    <nav aria-label="页面导航">
+      <button type="button" data-prev aria-label="上一页">←</button>
+      <span data-slide-counter>1 / 3</span>
+      <button type="button" data-next aria-label="下一页">→</button>
+    </nav>
+    <script>
+      (() => {
+        const deck = document.querySelector("#deck");
+        const slides = Array.from(document.querySelectorAll(".slide"));
+        const counter = document.querySelector("[data-slide-counter]");
+        let current = 0;
+        const show = (next) => {
+          current = Math.max(0, Math.min(next, slides.length - 1));
+          deck.style.transform = "translateX(-" + current * 100 + "vw)";
+          counter.textContent = current + 1 + " / " + slides.length;
+        };
+        document.querySelector("[data-prev]").addEventListener("click", () => show(current - 1));
+        document.querySelector("[data-next]").addEventListener("click", () => show(current + 1));
+        document.addEventListener("keydown", (event) => {
+          if (event.key === "ArrowLeft") show(current - 1);
+          if (event.key === "ArrowRight") show(current + 1);
+        });
+        show(0);
+      })();
+    </script>
+  </body>
+</html>
