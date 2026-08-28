@@ -55,7 +55,25 @@ const textColor = document.querySelector("#text-color");
 const lineHeight = document.querySelector("#line-height");
 const alignmentButtons = document.querySelectorAll("[data-align]");
 
+const TEMPLATE_COVER_CLASSES = {
+  Grove: "grove",
+  "Blue Professional": "blue-professional",
+  "Biennale Yellow": "biennale-yellow",
+  "Cobalt Grid": "cobalt-grid",
+  Studio: "studio",
+};
+
+const STATUS_CLASSES = {
+  生成中: "running",
+  可编辑: "ready",
+  生成失败: "failed",
+  已取消: "canceled",
+};
+
 document.querySelector("#new-project").addEventListener("click", () => showView("new"));
+document
+  .querySelectorAll('[data-action="new"]')
+  .forEach((button) => button.addEventListener("click", () => showView("new")));
 document
   .querySelectorAll('[data-action="home"]')
   .forEach((button) => button.addEventListener("click", showHome));
@@ -90,7 +108,7 @@ async function loadTemplates() {
   list.replaceChildren(
     ...state.templates.map((template, index) => {
       const label = document.createElement("label");
-      label.className = "template-option";
+      label.className = "template-option template-option--" + escapeHtml(template.id);
       label.innerHTML =
         '<input type="radio" name="template" value="' +
         escapeHtml(template.id) +
@@ -129,28 +147,33 @@ async function loadProjects() {
 function renderProjects() {
   const list = document.querySelector("#project-list");
   const empty = document.querySelector("#empty-projects");
+  const count = document.querySelector("#project-count");
   list.replaceChildren(
-    ...state.projects.map((project, index) => {
+    ...state.projects.map((project) => {
       const article = document.createElement("article");
       article.className = "project-card";
       article.setAttribute("aria-label", project.name);
       article.tabIndex = 0;
+      const coverClass = TEMPLATE_COVER_CLASSES[project.templateName] || "";
+      const statusClass = STATUS_CLASSES[project.status] || "";
       article.innerHTML =
-        '<div class="project-number">' +
-        String(index + 1).padStart(2, "0") +
-        "</div><div>" +
-        '<p class="project-template">' +
+        '<div class="project-cover project-cover--' +
+        coverClass +
+        '" aria-hidden="true"><span class="cover-badge">' +
         escapeHtml(project.templateName) +
-        "</p><h3>" +
+        '</span></div><div class="project-body"><div class="project-title-row"><h3>' +
         escapeHtml(project.name) +
-        '</h3><p class="project-meta">最后修改 ' +
+        '</h3><button class="project-delete" type="button" aria-label="删除项目 ' +
+        escapeHtml(project.name) +
+        '">删除</button></div><div class="project-info-row"><p class="project-meta">' +
+        escapeHtml(project.templateName) +
+        " · 最后修改 " +
         formatDate(project.updatedAt) +
-        '</p></div><span class="project-status">' +
+        '</p><span class="project-status project-status--' +
+        statusClass +
+        '">' +
         escapeHtml(project.status) +
-        "</span>" +
-        '<button class="project-delete" type="button" aria-label="删除项目 ' +
-        escapeHtml(project.name) +
-        '">删除</button>';
+        "</span></div></div>";
       article.addEventListener("click", () => openProject(project.id));
       article.querySelector(".project-delete").addEventListener("click", (event) => {
         event.stopPropagation();
@@ -167,6 +190,7 @@ function renderProjects() {
     }),
   );
   empty.hidden = state.projects.length > 0;
+  count.textContent = state.projects.length + " 个项目";
 }
 async function openProject(projectId) {
   const response = await fetch("/api/projects/" + encodeURIComponent(projectId));
@@ -407,6 +431,7 @@ function openPreview(project) {
   resetEditor();
   state.currentProject = project;
   document.querySelector("#preview-title").textContent = project.name;
+  document.querySelector("#preview-template-label").textContent = "安全预览 · " + project.templateName;
   const frame = document.querySelector('iframe[title="演示文稿预览"]');
   frame.srcdoc = project.html;
   setMode("preview");
@@ -421,6 +446,13 @@ async function showHome() {
 function showView(name) {
   Object.entries(views).forEach(([key, view]) => {
     view.hidden = key !== name;
+  });
+  document.querySelectorAll(".sidebar-nav .nav-item").forEach((item) => {
+    const action = item.dataset.action;
+    const active = (name === "home" && action === "home") || (name === "new" && action === "new");
+    item.classList.toggle("is-active", active);
+    if (active) item.setAttribute("aria-current", "page");
+    else item.removeAttribute("aria-current");
   });
   if (name === "new") source.focus();
 }

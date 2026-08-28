@@ -8,129 +8,203 @@
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
-    <header class="app-header">
-      <div>
-        <p class="eyebrow">LOCAL PRESENTATION WORKSPACE</p>
-        <h1>AI Presentation Studio</h1>
-      </div>
-      <p class="local-badge">仅在当前电脑运行</p>
-    </header>
-
-    <main class="app-main">
-      <section id="home-view" class="view" aria-labelledby="home-title">
-        <div class="view-heading">
-          <div>
-            <p class="section-label">演示项目</p>
-            <h2 id="home-title">把中文项目材料变成演示文稿</h2>
-            <p class="lede">项目保存在本机。先从 Grove 开始，生成后进入安全预览。</p>
-          </div>
-          <button id="new-project" class="primary">新建项目</button>
-        </div>
-        <div id="project-list" class="project-grid" aria-live="polite"></div>
-        <div id="empty-projects" class="empty-state">
-          <span class="empty-mark">01</span>
-          <h3>还没有演示项目</h3>
-          <p>点击“新建项目”，粘贴第一份材料。</p>
-        </div>
-      </section>
-
-      <section id="new-view" class="view" aria-labelledby="new-title" hidden>
-        <button class="text-button" data-action="home">← 返回首页</button>
-        <div class="workspace-grid">
-          <div class="source-card">
-            <p class="section-label">新建演示项目</p>
-            <h2 id="new-title">粘贴源材料</h2>
-            <p class="field-help">项目名称自动取第一行。可以直接粘贴带 Markdown 标记的内容。</p>
-            <label for="source">源材料</label>
-            <textarea id="source" rows="14" placeholder="第一行会成为项目名称&#10;&#10;继续粘贴背景、过程、结果和需要展示的数据……"></textarea>
-          </div>
-
-          <aside class="template-card">
-            <p class="section-label">演示模板</p>
-            <h2>选择视觉体系</h2>
-            <div id="template-list" class="template-list"></div>
-            <button id="send" class="primary wide" disabled>发送</button>
-            <p class="send-note">点击后立即完整生成，不进入聊天，也不会继续追问。</p>
-          </aside>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand-lockup">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 28 28" width="28" height="28" role="presentation" focusable="false">
+              <rect width="28" height="28" rx="8" fill="currentColor" />
+              <path d="M11 9.4v9.2l8-4.6z" fill="#fff" />
+            </svg>
+          </span>
+          <span class="brand-text"><strong>AI Presentation</strong><small>Studio</small></span>
         </div>
 
-        <section id="generation-panel" class="generation-panel" aria-live="polite" hidden>
-          <div>
-            <p class="section-label">生成进度</p>
-            <h2 data-testid="stage">正在准备材料</h2>
+        <nav class="sidebar-nav" aria-label="主要导航">
+          <button class="nav-item" type="button" data-action="home">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+              <path d="M3 10.5 12 3l9 7.5" />
+              <path d="M5.5 9.5V20a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V9.5" />
+            </svg>
+            <span>项目中心</span>
+          </button>
+          <button class="nav-item" type="button" data-action="new">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+              <rect x="3.5" y="3.5" width="17" height="17" rx="3.5" />
+              <path d="M12 8v8M8 12h8" />
+            </svg>
+            <span>新建演示</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-context">
+          <p class="sidebar-label">当前工作区</p>
+          <div class="workspace-row">
+            <span class="workspace-avatar" aria-hidden="true">我</span>
+            <span class="workspace-text"><strong>我的演示项目</strong><small>保存在这台电脑</small></span>
           </div>
-          <ol data-testid="stage-history" class="stage-history"></ol>
-          <div class="generation-actions">
-            <p id="generation-message"></p>
-            <button id="cancel-generation" type="button" hidden>取消生成</button>
-            <button id="retry-generation" type="button" hidden>重试</button>
+        </div>
+
+        <div class="sidebar-footer">
+          <span class="local-dot" aria-hidden="true"></span>
+          <span class="workspace-text"><strong>本机运行</strong><small>内容不会上传云端</small></span>
+        </div>
+      </aside>
+
+      <main class="app-main">
+        <section id="home-view" class="view home-view" aria-labelledby="home-title">
+          <div class="home-backdrop" aria-hidden="true"></div>
+          <div class="hero-panel">
+            <h1 class="hero-brand">
+              <span class="hero-mark" aria-hidden="true">
+                <svg viewBox="0 0 44 44" width="44" height="44" role="presentation" focusable="false">
+                  <rect width="44" height="44" rx="12" fill="currentColor" />
+                  <path d="M17.5 15v14l12-7z" fill="#fff" />
+                </svg>
+              </span>
+              AI Presentation Studio
+            </h1>
+            <h2 id="home-title" class="hero-title">把项目材料，变成一份好讲的演示</h2>
+            <p class="hero-copy">粘贴中文材料，选择演示模板，本机生成后可以轻量编辑，并导出 HTML 和 PDF。</p>
+            <button id="new-project" class="composer" type="button">
+              <span class="composer-plus" aria-hidden="true">＋</span>
+              <span class="composer-copy">
+                <strong>新建项目：粘贴材料，生成演示文稿</strong>
+                <small>进入新建页：粘贴中文材料、选择模板、发送生成</small>
+              </span>
+              <span class="composer-orb" aria-hidden="true">↑</span>
+            </button>
           </div>
-          <details data-testid="technical-log">
-            <summary>详细日志</summary>
-            <pre id="technical-log"></pre>
-          </details>
+
+          <section class="recent-section" aria-labelledby="recent-title">
+            <div class="section-heading">
+              <h2 id="recent-title">最近项目</h2>
+              <span id="project-count" class="count-badge">0 个项目</span>
+            </div>
+            <div id="project-list" class="project-grid" aria-live="polite"></div>
+            <div id="empty-projects" class="empty-state">
+              <span class="empty-mark" aria-hidden="true">✦</span>
+              <h3>这里还没有演示项目</h3>
+              <p>从上面的入口粘贴第一份材料，生成的演示会显示在这里。</p>
+              <button class="empty-action" type="button" data-action="new">新建第一个项目</button>
+            </div>
+          </section>
         </section>
-      </section>
 
-      <section id="preview-view" class="view preview-view" data-testid="preview" aria-labelledby="preview-title" hidden>
-        <div class="preview-toolbar">
-          <button class="text-button" data-action="home">← 返回首页</button>
-          <div>
-            <p class="section-label">安全预览 · Grove</p>
-            <h2 id="preview-title">演示项目</h2>
+        <section id="new-view" class="view new-view" aria-labelledby="new-title" hidden>
+          <div class="page-topbar">
+            <button class="text-button" data-action="home">← 返回首页</button>
+            <div>
+              <p class="section-label">新建演示项目</p>
+              <h2 id="new-title">粘贴材料，选择模板，发送生成</h2>
+            </div>
           </div>
-          <div class="preview-status">
-            <span>生成完成</span>
-            <span class="status-dot"></span>
-            <span>可编辑</span>
-          </div>
-          <div class="preview-actions">
-            <span id="workspace-mode" class="mode-badge">预览模式</span>
-            <button id="undo" type="button" disabled>撤销</button>
-            <button id="redo" type="button" disabled>重做</button>
-            <button id="save" type="button" disabled>保存</button>
-            <button id="export-html" type="button">导出 HTML</button>
-            <button id="export-pdf" type="button">导出 PDF</button>
-            <button id="edit-toggle" type="button">编辑</button>
-            <button id="regenerate" type="button">重新生成</button>
-          </div>
-        </div>
-        <p id="export-status" class="export-status" role="status" aria-live="polite"></p>
-        <div class="preview-frame-shell">
-          <iframe title="演示文稿预览" sandbox="allow-scripts"></iframe>
-        </div>
-        <div id="editor-layout" class="editor-layout" hidden>
-          <div class="editor-canvas-shell">
-            <div id="gjs" data-testid="editor-canvas" aria-label="演示文稿编辑画布"></div>
-            <nav class="editor-page-navigation" aria-label="编辑页导航">
-              <button id="editor-previous-slide" type="button" aria-label="上一页" disabled>←</button>
-              <span id="editor-slide-counter" aria-live="polite">1 / 1</span>
-              <button id="editor-next-slide" type="button" aria-label="下一页" disabled>→</button>
-            </nav>
-          </div>
-          <aside class="selection-panel" aria-live="polite">
-            <p class="section-label">元素选择</p>
-            <strong id="selection-status">点击画布中的文字或普通内容图片</strong>
-            <fieldset id="text-controls" class="text-controls" disabled>
-              <label for="text-content">文字内容</label>
-              <textarea id="text-content" rows="3"></textarea>
-              <label for="font-size">字号</label>
-              <input id="font-size" type="number" min="8" max="200" step="1" />
-              <label for="text-color">文字颜色</label>
-              <input id="text-color" type="color" />
-              <label for="line-height">行距</label>
-              <input id="line-height" type="number" min="0.8" max="3" step="0.1" />
-              <div class="alignment-group" role="group" aria-label="文字对齐">
-                <button type="button" data-align="left" aria-label="左对齐">左</button>
-                <button type="button" data-align="center" aria-label="居中对齐">中</button>
-                <button type="button" data-align="right" aria-label="右对齐">右</button>
+
+          <div class="workspace-grid">
+            <div class="panel source-card">
+              <div class="panel-heading">
+                <span class="step-number" aria-hidden="true">01</span>
+                <div>
+                  <h2>粘贴源材料</h2>
+                  <p class="field-help">项目名称自动取第一行。可以直接粘贴带 Markdown 标记的内容。</p>
+                </div>
               </div>
-            </fieldset>
-          </aside>
-        </div>
+              <label class="field-label" for="source">源材料</label>
+              <textarea id="source" rows="14" placeholder="第一行会成为项目名称&#10;&#10;继续粘贴背景、过程、结果和需要展示的数据……"></textarea>
+            </div>
 
-      </section>
-    </main>
+            <aside class="panel template-card">
+              <div class="panel-heading">
+                <span class="step-number" aria-hidden="true">02</span>
+                <div>
+                  <h2>选择演示模板</h2>
+                  <p class="field-help">模板决定生成演示的视觉风格。</p>
+                </div>
+              </div>
+              <div id="template-list" class="template-list"></div>
+              <button id="send" class="primary wide" type="button" disabled>发送</button>
+              <p class="send-note">点击后立即完整生成，不进入聊天，也不会继续追问。</p>
+            </aside>
+          </div>
+
+          <section id="generation-panel" class="generation-panel" aria-live="polite" hidden>
+            <div class="generation-heading">
+              <span class="pulse-mark" aria-hidden="true"></span>
+              <div>
+                <p class="section-label">生成进度</p>
+                <h2 data-testid="stage">正在准备材料</h2>
+              </div>
+            </div>
+            <ol data-testid="stage-history" class="stage-history"></ol>
+            <div class="generation-actions">
+              <p id="generation-message"></p>
+              <button id="cancel-generation" type="button" hidden>取消生成</button>
+              <button id="retry-generation" type="button" hidden>重试</button>
+            </div>
+            <details data-testid="technical-log">
+              <summary>详细日志</summary>
+              <pre id="technical-log"></pre>
+            </details>
+          </section>
+        </section>
+
+        <section id="preview-view" class="view preview-view" data-testid="preview" aria-labelledby="preview-title" hidden>
+          <div class="preview-toolbar">
+            <div class="preview-toolbar-left">
+              <button class="back-button" type="button" data-action="home" aria-label="返回首页">←</button>
+              <div class="preview-title-group">
+                <p class="section-label" id="preview-template-label">安全预览</p>
+                <h2 id="preview-title">演示项目</h2>
+              </div>
+              <span id="workspace-mode" class="mode-badge">预览模式</span>
+            </div>
+            <div class="preview-actions">
+              <button id="undo" type="button" disabled>撤销</button>
+              <button id="redo" type="button" disabled>重做</button>
+              <span class="action-divider" aria-hidden="true"></span>
+              <button id="save" type="button" disabled>保存</button>
+              <button id="export-html" type="button">导出 HTML</button>
+              <button id="export-pdf" type="button">导出 PDF</button>
+              <button id="regenerate" type="button">重新生成</button>
+              <button id="edit-toggle" class="button-dark" type="button">编辑</button>
+            </div>
+          </div>
+          <p id="export-status" class="export-status" role="status" aria-live="polite"></p>
+          <div class="preview-frame-shell">
+            <iframe title="演示文稿预览" sandbox="allow-scripts"></iframe>
+          </div>
+          <div id="editor-layout" class="editor-layout" hidden>
+            <div class="editor-canvas-shell">
+              <div id="gjs" data-testid="editor-canvas" aria-label="演示文稿编辑画布"></div>
+              <nav class="editor-page-navigation" aria-label="编辑页导航">
+                <button id="editor-previous-slide" type="button" aria-label="上一页" disabled>←</button>
+                <span id="editor-slide-counter" aria-live="polite">1 / 1</span>
+                <button id="editor-next-slide" type="button" aria-label="下一页" disabled>→</button>
+              </nav>
+            </div>
+            <aside class="selection-panel" aria-live="polite">
+              <p class="section-label">元素选择</p>
+              <strong id="selection-status">点击画布中的文字或普通内容图片</strong>
+              <fieldset id="text-controls" class="text-controls" disabled>
+                <label for="text-content">文字内容</label>
+                <textarea id="text-content" rows="3"></textarea>
+                <label for="font-size">字号</label>
+                <input id="font-size" type="number" min="8" max="200" step="1" />
+                <label for="text-color">文字颜色</label>
+                <input id="text-color" type="color" />
+                <label for="line-height">行距</label>
+                <input id="line-height" type="number" min="0.8" max="3" step="0.1" />
+                <div class="alignment-group" role="group" aria-label="文字对齐">
+                  <button type="button" data-align="left" aria-label="左对齐">左</button>
+                  <button type="button" data-align="center" aria-label="居中对齐">中</button>
+                  <button type="button" data-align="right" aria-label="右对齐">右</button>
+                </div>
+              </fieldset>
+            </aside>
+          </div>
+        </section>
+      </main>
+    </div>
 
     <dialog id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-message">
       <div class="confirm-dialog-content">
