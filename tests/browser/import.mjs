@@ -9,6 +9,7 @@ import { chromium } from "playwright-core";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const outputRoot = path.join(root, "output", "test-data");
 await mkdir(outputRoot, { recursive: true });
+await mkdir(path.join(root, "output", "playwright"), { recursive: true });
 const dataDir = await mkdtemp(path.join(outputRoot, "import-"));
 const samplesDir = path.join(outputRoot, "import-samples");
 await mkdir(samplesDir, { recursive: true });
@@ -60,6 +61,47 @@ const noPagesHtml = [
 ].join("\n");
 const noPagesPath = path.join(samplesDir, "no-pages.html");
 await writeFile(noPagesPath, noPagesHtml, "utf8");
+
+const partialDeckHtml = [
+  "<!doctype html>",
+  '<html lang="zh-CN">',
+  "<head>",
+  '<meta charset="UTF-8">',
+  "<title>部分可编辑演示</title>",
+  "</head>",
+  "<body>",
+  '<header><img class="logo" src="data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2232%22%20height%3D%2232%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20fill%3D%22%23173b2a%22%2F%3E%3C%2Fsvg%3E" alt="品牌标识"></header>',
+  '<section class="slide">',
+  '<svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18" fill="#e8f0e4"></circle></svg>',
+  "<h1>部分可编辑验收演示标题</h1>",
+  "<p>第一页带 SVG 装饰，正文文字仍可编辑。</p>",
+  "</section>",
+  '<section class="slide" style="background:linear-gradient(#f7f4e8,#e2ddd0)">',
+  "<h1>第二页渐变背景</h1>",
+  "<p>本页背景渐变将被锁定为原样显示。</p>",
+  "</section>",
+  "</body>",
+  "</html>",
+].join("\n");
+const partialDeckPath = path.join(samplesDir, "部分可编辑演示.html");
+await writeFile(partialDeckPath, partialDeckHtml, "utf8");
+
+const reactAppHtml = [
+  "<!doctype html>",
+  '<html lang="zh-CN">',
+  "<head>",
+  '<meta charset="UTF-8">',
+  "<title>React 演示</title>",
+  "</head>",
+  "<body>",
+  '<div id="root"></div>',
+  '<script src="https://cdn.example.com/react.production.min.js"></script>',
+  "<script>ReactDOM.createRoot(document.getElementById(\"root\")).render(children);</script>",
+  "</body>",
+  "</html>",
+].join("\n");
+const reactAppPath = path.join(samplesDir, "react-app.html");
+await writeFile(reactAppPath, reactAppHtml, "utf8");
 
 const textPath = path.join(samplesDir, "说明文档.txt");
 await writeFile(textPath, "这不是 HTML 文件，只是普通文本。", "utf8");
@@ -144,12 +186,14 @@ try {
   assert.equal(await verdictPill.textContent(), "完全可编辑");
   await page.getByText("未修改原文件", { exact: false }).waitFor();
   await page.getByText("页面结构识别", { exact: true }).waitFor();
-  await page.getByText("识别出 3 页幻灯片", { exact: true }).waitFor();
+  await page.getByText("通过「slide 类名规则」识别出 3 页幻灯片", { exact: true }).waitFor();
   await page.getByText("已移除 1 段脚本", { exact: true }).waitFor();
+  await page.getByText("3 处 CSS 动画已转为静态", { exact: true }).waitFor();
+  await page.getByText("识别出 6 处可编辑文字、1 张可编辑图片", { exact: true }).waitFor();
   await page.getByText("文件类型", { exact: true }).waitFor();
   await page.getByText("文件大小", { exact: true }).waitFor();
   const passBadges = await page.getByText("通过", { exact: true }).count();
-  assert.ok(passBadges >= 4, "每条通过规则都应显示通过徽章");
+  assert.ok(passBadges >= 7, "每条通过规则都应显示通过徽章");
   await page.getByText("已创建演示项目「导入验收演示」", { exact: true }).waitFor();
 
   // 5. 进入现有安全预览：脚本不得运行，导入项目没有「重新生成」。
@@ -261,7 +305,89 @@ try {
   await page.locator("#project-count").waitFor();
   assert.equal(await countBadge.textContent(), countBefore, "无法识别页面不得创建项目记录");
 
-  await mkdir(path.join(root, "output", "playwright"), { recursive: true });
+  // 11. 部分可编辑档：锁定清单支撑原型屏幕 8，报告与实际编辑体验一致。
+  await importEntry.click();
+  await page.locator("#import-file-input").setInputFiles(partialDeckPath);
+  await page.getByText("部分可编辑演示.html", { exact: true }).waitFor();
+  await startButton.click();
+  await reportView.waitFor();
+  const partialPill = page.getByTestId("import-verdict");
+  assert.equal(await partialPill.textContent(), "部分可编辑");
+  assert.match((await partialPill.getAttribute("class")) || "", /is-partial/);
+  await page.getByText("锁定元素清单", { exact: true }).waitFor();
+  await page
+    .getByText("SVG 装饰图形 1 处、背景渐变 1 处、页眉 Logo 1 处保持原样显示，不可编辑", { exact: true })
+    .waitFor();
+  const lockBadges = await page.getByText("锁定", { exact: true }).count();
+  assert.ok(lockBadges >= 1, "锁定内容规则应显示锁定徽章");
+  await page.getByText("已创建演示项目「部分可编辑演示」", { exact: true }).waitFor();
+  await page.screenshot({ path: path.join(root, "output", "playwright", "import-partial.png"), fullPage: true });
+
+  const partialRecord = await fetch(baseUrl + "/api/projects")
+    .then((response) => response.json())
+    .then((projects) => projects.find((project) => project.originalFileName === "部分可编辑演示.html"));
+  assert.ok(partialRecord, "项目列表必须包含部分可编辑项目");
+  assert.equal(partialRecord.verdict, "部分可编辑");
+  const lockedInventory = partialRecord.importReport.lockedElements;
+  assert.deepEqual(
+    lockedInventory.map((item) => [item.category, item.count]),
+    [
+      ["SVG 装饰图形", 1],
+      ["背景渐变", 1],
+      ["页眉 Logo", 1],
+    ],
+    "锁定元素清单必须逐类别给出数量（支撑原型屏幕 8）",
+  );
+  for (const item of lockedInventory) {
+    assert.ok(typeof item.reason === "string" && item.reason.length > 0, "每个锁定类别必须有原因");
+  }
+
+  await page.getByRole("button", { name: "进入编辑", exact: true }).click();
+  await page.getByTestId("preview").waitFor({ timeout: 5_000 });
+  await page.getByRole("button", { name: "编辑", exact: true }).click();
+  await page.getByText("编辑模式", { exact: true }).waitFor();
+  const partialEditorFrame = page.frameLocator('iframe[title="演示文稿编辑画布"]');
+  assert.ok(
+    (await partialEditorFrame.locator("svg circle").count()) >= 1,
+    "锁定 SVG 必须在编辑画布中原样保留",
+  );
+  const partialHeading = partialEditorFrame.getByRole("heading", { level: 1 }).first();
+  await partialHeading.click();
+  await page.getByText("已选中文字", { exact: true }).waitFor();
+  await page.getByRole("textbox", { name: "文字内容", exact: true }).fill("部分可编辑改过的标题");
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await page.getByText("保存成功", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "完成编辑", exact: true }).click();
+  await page.getByText("预览模式", { exact: true }).waitFor();
+  const partialPreviewFrame = page.frameLocator('iframe[title="演示文稿预览"]');
+  await partialPreviewFrame
+    .getByRole("heading", { name: "部分可编辑改过的标题", level: 1 })
+    .waitFor({ timeout: 5_000 });
+  assert.ok(
+    (await partialPreviewFrame.locator("svg circle").count()) >= 1,
+    "锁定 SVG 在预览中保持原样显示",
+  );
+  await page.getByRole("button", { name: "返回首页" }).click();
+
+  // 12. React 框架样本：并列给出框架与脚本生成内容两个原因（对齐原型屏幕 9）。
+  const countAfterPartial = await countBadge.textContent();
+  await importEntry.click();
+  await page.locator("#import-file-input").setInputFiles(reactAppPath);
+  await page.getByText("react-app.html", { exact: true }).waitFor();
+  await startButton.click();
+  await reportView.waitFor();
+  assert.equal(await page.getByTestId("import-verdict").textContent(), "暂不支持");
+  await page.getByText("检测到 React 框架", { exact: true }).waitFor();
+  await page.getByText("页面内容由脚本动态生成", { exact: true }).waitFor();
+  await page.getByText("未创建演示项目", { exact: true }).waitFor();
+  assert.equal(
+    await page.getByRole("button", { name: "进入编辑", exact: true }).count(),
+    0,
+    "暂不支持时不得提供进入编辑入口",
+  );
+  assert.equal(await countBadge.textContent(), countAfterPartial, "React 样本不得创建项目记录");
+  await page.screenshot({ path: path.join(root, "output", "playwright", "import-react.png"), fullPage: true });
+
   await page.screenshot({ path: path.join(root, "output", "playwright", "import-green.png"), fullPage: true });
   console.log("PASS: import demo minimal flow works through the public UI");
 } catch (error) {
