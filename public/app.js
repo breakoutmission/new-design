@@ -70,6 +70,9 @@ const imageControls = document.querySelector("#image-controls");
 const replaceImageButton = document.querySelector("#replace-image");
 const imageFileInput = document.querySelector("#image-file-input");
 const lockedHint = document.querySelector("#locked-hint");
+const elementActions = document.querySelector("#element-actions");
+const copyElementButton = document.querySelector("#copy-element");
+const deleteElementButton = document.querySelector("#delete-element");
 
 const TEMPLATE_COVER_CLASSES = {
   Grove: "grove",
@@ -146,6 +149,8 @@ alignmentButtons.forEach((button) =>
 );
 replaceImageButton.addEventListener("click", () => imageFileInput.click());
 imageFileInput.addEventListener("change", () => void replaceSelectedImageFromFile());
+copyElementButton.addEventListener("click", () => state.editor?.copySelection());
+deleteElementButton.addEventListener("click", () => state.editor?.deleteSelection());
 
 importEntry.addEventListener("click", openImportDialog);
 importDropzone.addEventListener("click", () => importFileInput.click());
@@ -730,12 +735,18 @@ async function ensureEditor() {
         textControls.disabled = false;
         imageControls.hidden = true;
         syncTextControls(text);
-      } else {
+      } else if (kind === "image") {
         selectionStatus.textContent = "已选中普通内容图片";
         textControls.hidden = true;
         textControls.disabled = true;
         imageControls.hidden = false;
+      } else {
+        selectionStatus.textContent = "点击画布中的文字或普通内容图片";
+        textControls.hidden = false;
+        textControls.disabled = true;
+        imageControls.hidden = true;
       }
+      elementActions.hidden = kind !== "text" && kind !== "image";
     },
     onLocked() {
       selectionStatus.textContent = "已锁定：这个元素不可编辑";
@@ -743,6 +754,7 @@ async function ensureEditor() {
       textControls.disabled = true;
       imageControls.hidden = true;
       lockedHint.hidden = false;
+      elementActions.hidden = true;
       showToast("这个元素不可编辑");
     },
     onHistoryChange: updateHistoryButtons,
@@ -787,6 +799,7 @@ function resetEditor() {
   textControls.disabled = true;
   imageControls.hidden = true;
   lockedHint.hidden = true;
+  elementActions.hidden = true;
   updateHistoryButtons();
   updateEditorNavigation();
 }

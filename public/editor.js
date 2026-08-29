@@ -1,5 +1,6 @@
 import grapesjs from "/vendor/grapesjs/grapes.mjs";
 import { repairImageSrcProps, syncImportedImageMarks, toLetterSpacingPx } from "./editor-controls.js";
+import { clamp, copyComponentAdjacent } from "./element-operations.js";
 
 const EDITABLE_TEXT_SELECTOR = "[data-editable-text], h1, h2, h3, h4, h5, h6, p";
 const IMAGE_STYLE_KEYS = ["position", "left", "top", "right", "bottom", "width", "height"];
@@ -124,7 +125,25 @@ export async function mountPresentationEditor({
     if (selectedKind === "image") onSelection({ kind: "image" });
   };
 
+  const clearSelectionState = () => {
+    selectedComponent = null;
+    selectedKind = null;
+    clearSelectionOutline(frameDocument);
+    updateImageHandles();
+    onSelection({ kind: null });
+  };
+
+  const selectionIsLive = () => {
+    if (!selectedComponent || !selectedKind) return false;
+    const element = selectedComponent.getEl?.();
+    return Boolean(element) && frameDocument.contains(element);
+  };
+
   const handleSelected = (component) => {
+    if (!component) {
+      clearSelectionState();
+      return;
+    }
     const element = component.getEl();
     const editableText = element ? findEditableText(element) : null;
     const editableImage = element ? findEditableImage(element) : null;
@@ -188,8 +207,28 @@ export async function mountPresentationEditor({
   };
 
   const refreshSelection = () => {
-    markSelected();
-    notifySelection();
+    if (!selectionIsLive()) {
+      clearSelectionState();
+    } else {
+      markSelected();
+      notifySelection();
+    }
+    notifyHistory();
+  };
+
+  const copySelection = () => {
+    if (!selectionIsLive()) return;
+    const clone = copyComponentAdjacent(selectedComponent);
+    if (!clone) return;
+    editor.select(clone);
+    notifyHistory();
+  };
+
+  const deleteSelection = () => {
+    if (!selectionIsLive()) return;
+    const target = selectedComponent;
+    clearSelectionState();
+    target.remove();
     notifyHistory();
   };
 
@@ -403,6 +442,8 @@ export async function mountPresentationEditor({
     updateTextStyle,
     clearTextStyle,
     replaceSelectedImage,
+    copySelection,
+    deleteSelection,
     undo,
     redo,
     historyState,
@@ -602,10 +643,6 @@ function toComponentImageStyle(box) {
     width: box.width + "px",
     height: box.height + "px",
   };
-}
-
-function clamp(value, minimum, maximum) {
-  return Math.min(Math.max(value, minimum), Math.max(minimum, maximum));
 }
 
 function colorToHex(value) {

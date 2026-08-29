@@ -234,6 +234,23 @@
                   <button type="button" data-align="right" aria-label="右对齐">右</button>
                 </div>
               </fieldset>
+              <div id="element-actions" class="element-actions" hidden>
+                <button id="copy-element" type="button">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                    <rect x="9" y="9" width="11" height="11" rx="2" />
+                    <path d="M5 15V6a2 2 0 0 1 2-2h9" />
+                  </svg>
+                  复制
+                </button>
+                <button id="delete-element" type="button" class="element-action-danger">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                    <path d="M4 7h16" />
+                    <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                    <path d="M6.5 7l.8 12a1 1 0 0 0 1 .9h7.4a1 1 0 0 0 1-.9l.8-12" />
+                  </svg>
+                  删除
+                </button>
+              </div>
               <div id="image-controls" class="image-controls" hidden>
                 <p>拖动改变位置，四角控制点等比例缩放；图片始终完整保留在当前幻灯片内。</p>
                 <button id="replace-image" type="button">替换图片</button>
