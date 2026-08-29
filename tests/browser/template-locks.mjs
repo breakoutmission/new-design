@@ -53,7 +53,7 @@ try {
     const editor = page.frameLocator('iframe[title="演示文稿编辑画布"]');
     const firstSlide = editor.locator(".slide").first();
     await firstSlide.waitFor();
-    const locked = page.getByText("已锁定：这个元素不可编辑", { exact: true });
+    const locked = page.locator("#selection-status", { hasText: "已锁定：这个元素不可编辑" });
 
     await firstSlide.click({ position: { x: 4, y: 4 }, force: true });
     assert.equal(await locked.isVisible(), true, template.name + " 背景点击必须显示锁定提示");
@@ -82,7 +82,7 @@ try {
     }
 
     assert.equal(
-      await page.getByRole("textbox", { name: "文字内容", exact: true }).isDisabled(),
+      await page.locator("#text-controls").evaluate((element) => element.disabled),
       true,
       template.name + " 的非内容元素不得启用文字编辑",
     );

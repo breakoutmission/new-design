@@ -519,3 +519,23 @@ test("H4 prepareImportedHtml 可独立复用且幂等", () => {
   assert.equal(twice.html, once.html, "重复安全化结果必须一致");
   assert.ok(once.scriptCount === 0 && once.slideCount === 2);
 });
+
+// ---------------------------------------------------------------------------
+// I. 能力描述文案（#16 联动：用户可读 note 与编辑器实际能力保持一致）
+// ---------------------------------------------------------------------------
+
+test("I1 editableContent 的能力说明与编辑面板当前能力一致", () => {
+  const result = check(
+    doc(
+      '<section class="slide"><h1>盘点样本标题</h1>' +
+        '<img alt="配图" src="data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3C%2Fsvg%3E"></section>',
+    ),
+  );
+  const byCategory = Object.fromEntries(result.report.editableContent.map((item) => [item.category, item]));
+  assert.equal(
+    byCategory["可编辑文字"].note,
+    "可修改内容、字体、字号、颜色、粗细、行距、字间距和对齐方式",
+  );
+  assert.equal(byCategory["可编辑图片"].note, "可拖动位置、四角等比例缩放和替换图片内容");
+});
+

@@ -1,4 +1,11 @@
 import { mountPresentationEditor } from "./editor.js";
+import {
+  FONT_OPTIONS,
+  FONT_WEIGHT_OPTIONS,
+  matchFontFamilyOption,
+  matchFontWeightOption,
+  readLocalImageAsDataUrl,
+} from "./editor-controls.js";
 const state = {
   templates: [],
   projects: [],
@@ -52,10 +59,17 @@ const exportPdfButton = document.querySelector("#export-pdf");
 const exportStatus = document.querySelector("#export-status");
 const textControls = document.querySelector("#text-controls");
 const textContent = document.querySelector("#text-content");
+const fontFamily = document.querySelector("#font-family");
 const fontSize = document.querySelector("#font-size");
+const fontWeight = document.querySelector("#font-weight");
 const textColor = document.querySelector("#text-color");
+const letterSpacing = document.querySelector("#letter-spacing");
 const lineHeight = document.querySelector("#line-height");
 const alignmentButtons = document.querySelectorAll("[data-align]");
+const imageControls = document.querySelector("#image-controls");
+const replaceImageButton = document.querySelector("#replace-image");
+const imageFileInput = document.querySelector("#image-file-input");
+const lockedHint = document.querySelector("#locked-hint");
 const elementActions = document.querySelector("#element-actions");
 const copyElementButton = document.querySelector("#copy-element");
 const deleteElementButton = document.querySelector("#delete-element");
@@ -121,12 +135,20 @@ saveButton.addEventListener("click", saveCurrentProject);
 exportHtmlButton.addEventListener("click", () => void exportCurrentProject("html"));
 exportPdfButton.addEventListener("click", () => void exportCurrentProject("pdf"));
 textContent.addEventListener("input", () => state.editor?.updateTextContent(textContent.value));
+fontFamily.addEventListener("change", () => setTypography("font-family", fontFamily.value));
 fontSize.addEventListener("input", () => state.editor?.updateTextStyle("font-size", fontSize.value + "px"));
+fontWeight.addEventListener("change", () => setTypography("font-weight", fontWeight.value));
 textColor.addEventListener("input", () => state.editor?.updateTextStyle("color", textColor.value));
+letterSpacing.addEventListener("input", () => {
+  if (letterSpacing.value === "") return;
+  state.editor?.updateTextStyle("letter-spacing", letterSpacing.value + "px");
+});
 lineHeight.addEventListener("input", () => state.editor?.updateTextStyle("line-height", lineHeight.value));
 alignmentButtons.forEach((button) =>
   button.addEventListener("click", () => state.editor?.updateTextStyle("text-align", button.dataset.align)),
 );
+replaceImageButton.addEventListener("click", () => imageFileInput.click());
+imageFileInput.addEventListener("change", () => void replaceSelectedImageFromFile());
 copyElementButton.addEventListener("click", () => state.editor?.copySelection());
 deleteElementButton.addEventListener("click", () => state.editor?.deleteSelection());
 
@@ -671,6 +693,33 @@ function setMode(mode) {
 }
 
 
+function setTypography(property, value) {
+  if (value === "") state.editor?.clearTextStyle(property);
+  else state.editor?.updateTextStyle(property, value);
+}
+
+async function replaceSelectedImageFromFile() {
+  const file = imageFileInput.files[0];
+  imageFileInput.value = "";
+  if (!file) return;
+  if (!state.editor) {
+    showToast("请先选中要替换的图片");
+    return;
+  }
+  try {
+    const dataUrl = await readLocalImageAsDataUrl(file);
+    if (!state.editor.replaceSelectedImage(dataUrl)) showToast("请先选中要替换的图片");
+  } catch {
+    showToast("图片读取失败");
+  }
+}
+
+function populateTypographyOptions() {
+  fontFamily.replaceChildren(...FONT_OPTIONS.map((option) => new Option(option.label, option.value)));
+  fontWeight.replaceChildren(...FONT_WEIGHT_OPTIONS.map((option) => new Option(option.label, option.value)));
+}
+populateTypographyOptions();
+
 async function ensureEditor() {
   if (state.editor && state.editorProjectId === state.currentProject.id) return;
   resetEditor();
@@ -679,22 +728,32 @@ async function ensureEditor() {
     container: editorContainer,
     project: state.currentProject,
     onSelection({ kind, text }) {
+      lockedHint.hidden = true;
       if (kind === "text") {
         selectionStatus.textContent = "已选中文字";
+        textControls.hidden = false;
         textControls.disabled = false;
+        imageControls.hidden = true;
         syncTextControls(text);
       } else if (kind === "image") {
         selectionStatus.textContent = "已选中普通内容图片";
+        textControls.hidden = true;
         textControls.disabled = true;
+        imageControls.hidden = false;
       } else {
         selectionStatus.textContent = "点击画布中的文字或普通内容图片";
+        textControls.hidden = false;
         textControls.disabled = true;
+        imageControls.hidden = true;
       }
       elementActions.hidden = kind !== "text" && kind !== "image";
     },
     onLocked() {
       selectionStatus.textContent = "已锁定：这个元素不可编辑";
+      textControls.hidden = true;
       textControls.disabled = true;
+      imageControls.hidden = true;
+      lockedHint.hidden = false;
       elementActions.hidden = true;
       showToast("这个元素不可编辑");
     },
@@ -705,8 +764,11 @@ async function ensureEditor() {
 }
 function syncTextControls(text) {
   textContent.value = text.content;
+  fontFamily.value = matchFontFamilyOption(text.fontFamily);
   fontSize.value = String(text.fontSize);
+  fontWeight.value = matchFontWeightOption(text.fontWeight);
   textColor.value = text.color;
+  letterSpacing.value = String(text.letterSpacing);
   lineHeight.value = String(text.lineHeight);
   alignmentButtons.forEach((button) =>
     button.setAttribute("aria-pressed", String(button.dataset.align === text.textAlign)),
@@ -733,7 +795,10 @@ function resetEditor() {
   if (state.editor) state.editor.destroy();
   state.editor = null;
   state.editorProjectId = null;
+  textControls.hidden = false;
   textControls.disabled = true;
+  imageControls.hidden = true;
+  lockedHint.hidden = true;
   elementActions.hidden = true;
   updateHistoryButtons();
   updateEditorNavigation();

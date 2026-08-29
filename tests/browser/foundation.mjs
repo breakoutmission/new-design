@@ -125,7 +125,7 @@ try {
   });
   assert.equal(await otherParagraph.textContent(), untouchedParagraph);
 
-  const lockedStatus = page.getByText("已锁定：这个元素不可编辑", { exact: true });
+  const lockedStatus = page.locator("#selection-status", { hasText: "已锁定：这个元素不可编辑" });
   await editorFrame.locator(".slide").first().click({ position: { x: 20, y: 20 }, force: true });
   await lockedStatus.waitFor();
   await editorFrame.locator(".accent").click({ force: true });

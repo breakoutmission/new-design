@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node src/server.mjs",
     "start:fixture": "node src/server.mjs --fixture",
-    "test:browser": "node tests/import-checker.mjs && node tests/browser/launcher.mjs && node tests/browser/foundation.mjs && node tests/browser/grove-css-fidelity.mjs && node tests/browser/multipage-edit-preview.mjs && node tests/browser/import.mjs && node tests/browser/element-copy-delete.mjs && node tests/browser/recovery.mjs && node tests/browser/export.mjs && pnpm test:browser:templates",
+    "test:browser": "node tests/import-checker.mjs && node tests/browser/launcher.mjs && node tests/browser/foundation.mjs && node tests/browser/grove-css-fidelity.mjs && node tests/browser/multipage-edit-preview.mjs && node tests/browser/import.mjs && node tests/browser/issue-16-editor-controls.mjs && node tests/browser/element-copy-delete.mjs && node tests/browser/recovery.mjs && node tests/browser/export.mjs && pnpm test:browser:templates",
     "test:import-checker": "node tests/import-checker.mjs",
     "test:browser:launcher": "node tests/browser/launcher.mjs",
     "test:browser:launcher:windows": "node tests/browser/windows-default-launcher.mjs",

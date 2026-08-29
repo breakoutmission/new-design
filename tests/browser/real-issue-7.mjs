@@ -541,7 +541,7 @@ async function assertLockedPageCounter(page, editor) {
   await counter.waitFor({ state: "visible" });
   await counter.click({ force: true });
   assert.equal(
-    await page.getByText("已锁定：这个元素不可编辑", { exact: true }).isVisible(),
+    await page.locator("#selection-status", { hasText: "已锁定：这个元素不可编辑" }).isVisible(),
     true,
     "页码装饰必须保持锁定",
   );
