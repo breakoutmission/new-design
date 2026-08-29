@@ -214,6 +214,14 @@ async function startImport() {
   }
 }
 
+const RULE_STATE_CLASSES = { pass: "is-pass", warn: "is-warn", fail: "is-fail" };
+const RULE_STATE_MARKS = { pass: "✓", warn: "!", fail: "×" };
+const RULE_STATE_BADGES = { pass: "通过", warn: "锁定", fail: "未通过" };
+
+function ruleStateOf(status) {
+  return status === "pass" || status === "warn" ? status : "fail";
+}
+
 function showImportReport(report, project) {
   const displayName = String(report.file?.name || "导入演示").replace(/\.html?$/i, "");
   importReportTitle.textContent = displayName;
@@ -226,20 +234,21 @@ function showImportReport(report, project) {
     ...report.rules.map((rule) => {
       const item = document.createElement("li");
       item.className = "import-rule";
-      const passed = rule.status === "pass";
+      const ruleState = ruleStateOf(rule.status);
+      const stateClass = RULE_STATE_CLASSES[ruleState];
       item.innerHTML =
         '<span class="rule-mark ' +
-        (passed ? "is-pass" : "is-fail") +
+        stateClass +
         '" aria-hidden="true">' +
-        (passed ? "✓" : "×") +
+        RULE_STATE_MARKS[ruleState] +
         '</span><div class="rule-copy"><strong>' +
         escapeHtml(rule.title) +
         "</strong><small>" +
         escapeHtml(rule.detail || "") +
         '</small></div><span class="rule-badge ' +
-        (passed ? "is-pass" : "is-fail") +
+        stateClass +
         '">' +
-        (passed ? "通过" : "未通过") +
+        RULE_STATE_BADGES[ruleState] +
         "</span>";
       return item;
     }),
