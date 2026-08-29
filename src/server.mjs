@@ -268,7 +268,10 @@ app.post("/api/projects/:id/exports/html", async (req, res, next) => {
       return;
     }
 
-    const html = prepareSelfContainedHtml(project.html);
+    const html =
+      project.sourceType === "imported"
+        ? prepareImportedExportHtml(project.html)
+        : prepareSelfContainedHtml(project.html);
     const fileName = project.name + ".html";
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encodeURIComponent(fileName));
@@ -800,6 +803,79 @@ function prepareImportedPreviewHtml(html) {
   }
   assertNoForbiddenPatterns(html);
   return prepareImportedHtml(html).html;
+}
+
+// ---------------------------------------------------------------------------
+// 导入项目的 HTML 导出准备（ADR-0013 导出放宽，Issue #19）：仅 https 图片引用
+// 允许保留——<img> 的 src/srcset 与 CSS url() 引用的远程图片/字体，与导出文件
+// 自带的导入 CSP（img-src/font-src https:）一致；外部样式表 link 仍剥离，
+// 其余元素上的 http(s) 引用、@import、javascript: 地址一律拒绝。
+// file:// 与任何脚本绝对禁止（assertNoForbiddenPatterns + 二次安全化）。
+// 最后注入产品提供的静态翻页片段（纯 CSS 逐页吸附 + 写死的 DOM 页码徽章）：
+// 导入副本无脚本，导出成果离线打开即可逐页翻阅；先剥离旧片段保证重复导出幂等。
+// ---------------------------------------------------------------------------
+
+const IMPORT_EXPORT_REJECTED_PATTERNS = [
+  /<(?:source|video|audio|track|iframe|embed|object|use)\b[^>]*\b(?:src|srcset|poster|data|href)=["']https?:\/\//i,
+  /<img\b[^>]*\b(?:src|srcset)=["'][^"']*http:\/\//i,
+  /@import\s+(?:url\()?\s*["']?https?:\/\//i,
+  /url\(\s*["']?http:\/\//i,
+  /(?:href|src)\s*=\s*["']\s*javascript:/i,
+];
+
+const PRODUCT_STATIC_PAGING_STYLE_PATTERN = /<style data-product-static-paging>[\s\S]*?<\/style\s*>/gi;
+const PRODUCT_PAGE_BADGE_PATTERN = /<span data-product-page-badge>[\s\S]*?<\/span\s*>/gi;
+
+function prepareImportedExportHtml(html) {
+  if (!/<!doctype html>/i.test(html) || !/<html[\s>]/i.test(html) || !/<\/html>/i.test(html)) {
+    throw new Error("导出内容不是完整的 HTML。");
+  }
+  assertNoForbiddenPatterns(html);
+  // 二次安全化（幂等）：即使项目记录未经保存接口被改动，导出也不带脚本与内联事件。
+  const clean = prepareImportedHtml(html).html;
+  const relaxed = clean
+    .replace(/<link\b(?=[^>]*\bhref=["']https?:\/\/)[^>]*>\s*/gi, "")
+    .replace(PRODUCT_STATIC_PAGING_STYLE_PATTERN, "")
+    .replace(PRODUCT_PAGE_BADGE_PATTERN, "");
+  if (IMPORT_EXPORT_REJECTED_PATTERNS.some((pattern) => pattern.test(relaxed))) {
+    throw new Error("导出失败：演示包含不允许保留的外部资源，只有 https 图片链接可以保留。");
+  }
+  const slideCount = countSlides(relaxed);
+  if (slideCount < 1) {
+    throw new Error("导出失败：演示没有可翻阅的页面。");
+  }
+  return injectStaticPaging(relaxed, slideCount);
+}
+
+function injectStaticPaging(html, slideCount) {
+  // 页码徽章在导出时写死为真实 DOM 文本（总数与 PDF 分页同源 countSlides），
+  // 不依赖 CSS 计数器（getComputedStyle 不解析 counter，且各浏览器渲染有差异）。
+  let pageIndex = 0;
+  const withBadges = html.replace(
+    /(<[a-z][\w-]*\b[^>]*\bclass=["'][^"']*\bslide\b[^"']*["'][^>]*>)/gi,
+    (match) => {
+      pageIndex += 1;
+      return match + '<span data-product-page-badge>' + pageIndex + " / " + slideCount + "</span>";
+    },
+  );
+  const style = [
+    '<style data-product-static-paging>',
+    // 翻页由纯 CSS 完成：所有页面纵向排布，视口滚动逐页吸附，无需任何脚本。
+    "html{scroll-snap-type:y mandatory!important}",
+    "html,body{margin:0!important;padding:0!important;width:100%!important;height:auto!important;min-height:0!important;max-height:none!important;overflow:visible!important}",
+    "#deck,.deck,.stage,.slides,#slides{position:static!important;inset:auto!important;display:block!important;width:100%!important;height:auto!important;min-height:0!important;max-height:none!important;overflow:visible!important;transform:none!important;transition:none!important}",
+    "*:has(> .slide){position:static!important;inset:auto!important;display:block!important;width:100%!important;height:auto!important;min-height:0!important;max-height:none!important;overflow:visible!important;transform:none!important;transition:none!important}",
+    "nav{display:none!important}",
+    ".slide{position:relative!important;inset:auto!important;top:auto!important;right:auto!important;bottom:auto!important;left:auto!important;display:block!important;box-sizing:border-box!important;width:100vw!important;height:100vh!important;min-height:100vh!important;max-height:100vh!important;overflow:hidden!important;opacity:1!important;visibility:visible!important;pointer-events:auto!important;transform:none!important;transition:none!important;animation:none!important;float:none!important;scroll-snap-align:start!important;scroll-snap-stop:always!important}",
+    "[data-anim]{opacity:1!important;visibility:visible!important;transform:none!important;clip-path:none!important}",
+    "*{animation-delay:0s!important;animation-duration:0s!important;transition:none!important}",
+    '[data-product-page-badge]{position:absolute!important;right:24px!important;bottom:18px!important;z-index:9999!important;padding:8px 12px!important;border-radius:999px!important;color:#f7f4e8!important;background:rgba(20,35,24,.86)!important;font:600 13px/1 monospace!important;letter-spacing:.06em!important}',
+    "</style>",
+  ].join("");
+  const styled = /<\/head>/i.test(withBadges)
+    ? withBadges.replace(/<\/head>/i, style + "</head>")
+    : withBadges.replace(/<\/html>/i, style + "</body></html>");
+  return styled;
 }
 
 function normalizePageCounter(html, templateId) {
