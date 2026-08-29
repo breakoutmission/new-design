@@ -9,12 +9,14 @@ const state = {
   editor: null,
   editorProjectId: null,
   activeGeneration: null,
+  pendingImportFile: null,
 };
 
 const views = {
   home: document.querySelector("#home-view"),
   new: document.querySelector("#new-view"),
   preview: document.querySelector("#preview-view"),
+  "import-report": document.querySelector("#import-report-view"),
 };
 
 const source = document.querySelector("#source");
@@ -70,6 +72,31 @@ const STATUS_CLASSES = {
   已取消: "canceled",
 };
 
+const VERDICT_CLASSES = {
+  完全可编辑: "is-full",
+  部分可编辑: "is-partial",
+  暂不支持: "is-unsupported",
+};
+
+const importEntry = document.querySelector("#import-demo");
+const importDialog = document.querySelector("#import-dialog");
+const importDropzone = document.querySelector("#import-dropzone");
+const importFileInput = document.querySelector("#import-file-input");
+const importFileRow = document.querySelector("#import-file-row");
+const importFileName = document.querySelector("#import-file-name");
+const importFileMeta = document.querySelector("#import-file-meta");
+const importFileRemove = document.querySelector("#import-file-remove");
+const importCloseButton = document.querySelector("#import-close");
+const importCancelButton = document.querySelector("#import-cancel");
+const importStartButton = document.querySelector("#import-start");
+const importOpenProjectButton = document.querySelector("#import-open-project");
+const importVerdict = document.querySelector("#import-verdict");
+const importReportTitle = document.querySelector("#import-report-title");
+const importReportFileName = document.querySelector("#import-report-file-name");
+const importReportFileMeta = document.querySelector("#import-report-file-meta");
+const importRules = document.querySelector("#import-rules");
+const importReportStatus = document.querySelector("#import-report-status");
+
 document.querySelector("#new-project").addEventListener("click", () => showView("new"));
 document
   .querySelectorAll('[data-action="new"]')
@@ -97,6 +124,144 @@ lineHeight.addEventListener("input", () => state.editor?.updateTextStyle("line-h
 alignmentButtons.forEach((button) =>
   button.addEventListener("click", () => state.editor?.updateTextStyle("text-align", button.dataset.align)),
 );
+
+importEntry.addEventListener("click", openImportDialog);
+importDropzone.addEventListener("click", () => importFileInput.click());
+importFileInput.addEventListener("change", () => {
+  setPendingImportFile(importFileInput.files[0]);
+});
+importFileRemove.addEventListener("click", () => {
+  importFileInput.value = "";
+  clearPendingImportFile();
+});
+importCloseButton.addEventListener("click", closeImportDialog);
+importCancelButton.addEventListener("click", closeImportDialog);
+importDialog.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  closeImportDialog();
+});
+importStartButton.addEventListener("click", () => void startImport());
+importOpenProjectButton.addEventListener("click", () => {
+  const projectId = importOpenProjectButton.dataset.projectId;
+  if (projectId) void openProject(projectId);
+});
+["dragenter", "dragover"].forEach((type) =>
+  importDropzone.addEventListener(type, (event) => {
+    event.preventDefault();
+    importDropzone.classList.add("is-dragover");
+  }),
+);
+["dragleave", "drop"].forEach((type) =>
+  importDropzone.addEventListener(type, () => importDropzone.classList.remove("is-dragover")),
+);
+importDropzone.addEventListener("drop", (event) => {
+  event.preventDefault();
+  const file = event.dataTransfer?.files?.[0];
+  if (!file) return;
+  importFileInput.value = "";
+  setPendingImportFile(file);
+});
+
+function openImportDialog() {
+  importFileInput.value = "";
+  clearPendingImportFile();
+  importDialog.showModal();
+}
+
+function closeImportDialog() {
+  if (importDialog.open) importDialog.close();
+}
+
+function setPendingImportFile(file) {
+  if (!file) return;
+  state.pendingImportFile = file;
+  importFileName.textContent = file.name;
+  importFileMeta.textContent =
+    formatFileSize(file.size) + " · 单文件" + (/\.html?$/i.test(file.name) ? " · 自包含" : "");
+  importFileRow.hidden = false;
+  importStartButton.disabled = false;
+}
+
+function clearPendingImportFile() {
+  state.pendingImportFile = null;
+  importFileRow.hidden = true;
+  importStartButton.disabled = true;
+}
+
+async function startImport() {
+  const file = state.pendingImportFile;
+  if (!file) return;
+  importStartButton.disabled = true;
+  try {
+    const response = await fetch("/api/imports?filename=" + encodeURIComponent(file.name), {
+      method: "POST",
+      headers: { "Content-Type": "text/html" },
+      body: file,
+    });
+    const payload = await response.json().catch(() => ({}));
+    const report = payload.report || payload.project?.importReport;
+    if (report) {
+      closeImportDialog();
+      showImportReport(report, payload.project || null);
+      if (payload.project) await loadProjects();
+      return;
+    }
+    throw new Error(payload.error || "导入检查没有完成。");
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    importStartButton.disabled = !state.pendingImportFile;
+  }
+}
+
+function showImportReport(report, project) {
+  const displayName = String(report.file?.name || "导入演示").replace(/\.html?$/i, "");
+  importReportTitle.textContent = displayName;
+  importVerdict.textContent = report.verdict;
+  importVerdict.className = "verdict-pill " + (VERDICT_CLASSES[report.verdict] || "");
+  importReportFileName.textContent = report.file?.name || "";
+  importReportFileMeta.textContent =
+    formatFileSize(report.file?.size || 0) + (report.slideCount ? " · " + report.slideCount + " 页" : "");
+  importRules.replaceChildren(
+    ...report.rules.map((rule) => {
+      const item = document.createElement("li");
+      item.className = "import-rule";
+      const passed = rule.status === "pass";
+      item.innerHTML =
+        '<span class="rule-mark ' +
+        (passed ? "is-pass" : "is-fail") +
+        '" aria-hidden="true">' +
+        (passed ? "✓" : "×") +
+        '</span><div class="rule-copy"><strong>' +
+        escapeHtml(rule.title) +
+        "</strong><small>" +
+        escapeHtml(rule.detail || "") +
+        '</small></div><span class="rule-badge ' +
+        (passed ? "is-pass" : "is-fail") +
+        '">' +
+        (passed ? "通过" : "未通过") +
+        "</span>";
+      return item;
+    }),
+  );
+  if (project) {
+    importReportStatus.textContent = "已创建演示项目「" + project.name + "」";
+    importOpenProjectButton.hidden = false;
+    importOpenProjectButton.dataset.projectId = project.id;
+  } else {
+    importReportStatus.textContent = "未创建演示项目";
+    importOpenProjectButton.hidden = true;
+    delete importOpenProjectButton.dataset.projectId;
+  }
+  showView("import-report");
+}
+
+function formatFileSize(size) {
+  const bytes = Number(size) || 0;
+  if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1).replace(/\.0$/, "") + " MB";
+  if (bytes >= 1024) return (bytes / 1024).toFixed(1).replace(/\.0$/, "") + " KB";
+  return bytes + " B";
+}
 
 await Promise.all([loadTemplates(), loadProjects()]);
 showView("home");
@@ -154,7 +319,10 @@ function renderProjects() {
       article.className = "project-card";
       article.setAttribute("aria-label", project.name);
       article.tabIndex = 0;
-      const coverClass = TEMPLATE_COVER_CLASSES[project.templateName] || "";
+      const coverClass =
+        project.sourceType === "imported"
+          ? "import"
+          : TEMPLATE_COVER_CLASSES[project.templateName] || "";
       const statusClass = STATUS_CLASSES[project.status] || "";
       article.innerHTML =
         '<div class="project-cover project-cover--' +
@@ -432,6 +600,7 @@ function openPreview(project) {
   state.currentProject = project;
   document.querySelector("#preview-title").textContent = project.name;
   document.querySelector("#preview-template-label").textContent = "安全预览 · " + project.templateName;
+  regenerateButton.hidden = project.sourceType === "imported";
   const frame = document.querySelector('iframe[title="演示文稿预览"]');
   frame.srcdoc = project.html;
   setMode("preview");

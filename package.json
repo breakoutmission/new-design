@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node src/server.mjs",
     "start:fixture": "node src/server.mjs --fixture",
-    "test:browser": "node tests/browser/launcher.mjs && node tests/browser/foundation.mjs && node tests/browser/grove-css-fidelity.mjs && node tests/browser/multipage-edit-preview.mjs && node tests/browser/recovery.mjs && node tests/browser/export.mjs && pnpm test:browser:templates",
+    "test:browser": "node tests/browser/launcher.mjs && node tests/browser/foundation.mjs && node tests/browser/grove-css-fidelity.mjs && node tests/browser/multipage-edit-preview.mjs && node tests/browser/import.mjs && node tests/browser/recovery.mjs && node tests/browser/export.mjs && pnpm test:browser:templates",
     "test:browser:launcher": "node tests/browser/launcher.mjs",
     "test:browser:launcher:windows": "node tests/browser/windows-default-launcher.mjs",
     "test:browser:foundation": "node tests/browser/foundation.mjs",
@@ -19,7 +19,8 @@
     "test:browser:multipage": "node tests/browser/multipage-edit-preview.mjs",
     "test:browser:templates": "node tests/template-packages.mjs && node tests/browser/templates.mjs && node tests/browser/template-generation.mjs && node tests/browser/template-image-compatibility.mjs && node tests/browser/template-editor-navigation.mjs && node tests/browser/template-text-persistence.mjs && node tests/browser/template-image-persistence.mjs && node tests/browser/template-locks.mjs && node tests/browser/template-export.mjs",
     "test:browser:real:templates": "node tests/browser/real-templates.mjs",
-    "test:browser:real:issue-7": "node tests/browser/real-issue-7.mjs"
+    "test:browser:real:issue-7": "node tests/browser/real-issue-7.mjs",
+    "test:browser:import": "node tests/browser/import.mjs"
   },
   "dependencies": {
     "express": "5.2.1",
