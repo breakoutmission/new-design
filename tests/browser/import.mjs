@@ -352,7 +352,6 @@ try {
   await page.getByText("可编辑内容", { exact: true }).waitFor();
   assert.equal(await page.locator("#import-editable-count").textContent(), "1 类");
   await page.getByText("可编辑文字 4 处", { exact: true }).waitFor();
-  await page.getByText("可修改内容、字号、颜色、行距和对齐方式", { exact: true }).waitFor();
   await page.getByText("将被锁定的内容", { exact: true }).waitFor();
   assert.equal(await page.locator("#import-locked-count").textContent(), "3 类");
   await page.getByText("SVG 装饰图形 1 处", { exact: true }).waitFor();
@@ -393,6 +392,14 @@ try {
   for (const item of lockedInventory) {
     assert.ok(typeof item.reason === "string" && item.reason.length > 0, "每个锁定类别必须有原因");
   }
+  const editableRowNote = await page
+    .locator("#import-editable-list .import-rule small")
+    .first()
+    .textContent();
+  assert.ok(
+    (partialRecord.importReport.editableContent || []).some((item) => item.note === editableRowNote),
+    "可编辑内容行的说明必须来自报告的 editableContent 数据",
+  );
 
   await page.getByRole("button", { name: "仍要进入编辑", exact: true }).click();
   await page.getByTestId("preview").waitFor({ timeout: 5_000 });
