@@ -231,7 +231,7 @@
           <div class="import-report-body">
             <div class="import-report-heading">
               <span id="import-verdict" class="verdict-pill" data-testid="import-verdict">完全可编辑</span>
-              <span class="import-report-note">检查完成 · 未修改原文件</span>
+              <span id="import-report-note" class="import-report-note">检查完成 · 未修改原文件</span>
             </div>
             <div class="panel import-file-card">
               <span class="file-icon" aria-hidden="true">
@@ -244,14 +244,26 @@
                 <strong id="import-report-file-name"></strong>
                 <small id="import-report-file-meta"></small>
               </div>
+              <button id="import-view-original" type="button" hidden>查看原文件</button>
             </div>
             <div class="panel import-rules-card">
               <ul id="import-rules" class="import-rules"></ul>
+              <div id="import-content-groups" hidden>
+                <div class="import-group" id="import-editable-group">
+                  <p class="import-group-head"><span>可编辑内容</span><span id="import-editable-count" class="import-group-count"></span></p>
+                  <ul id="import-editable-list" class="import-rules"></ul>
+                </div>
+                <div class="import-group" id="import-locked-group">
+                  <p class="import-group-head"><span>将被锁定的内容</span><span id="import-locked-count" class="import-group-count"></span></p>
+                  <ul id="import-locked-list" class="import-rules"></ul>
+                </div>
+              </div>
             </div>
             <div class="import-report-footer">
               <p id="import-report-status" class="import-report-status"></p>
               <div class="import-report-actions">
-                <button class="text-button" type="button" data-action="home">返回首页</button>
+                <button id="import-home-action" class="text-button" type="button" data-action="home">返回首页</button>
+                <button id="import-reupload" class="text-button" type="button" hidden>重新上传</button>
                 <button id="import-open-project" class="button-dark" type="button">进入编辑</button>
               </div>
             </div>
