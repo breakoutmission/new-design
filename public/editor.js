@@ -1,5 +1,5 @@
 import grapesjs from "/vendor/grapesjs/grapes.mjs";
-import { copyComponentAdjacent, removeComponent } from "./element-operations.js";
+import { clamp, copyComponentAdjacent } from "./element-operations.js";
 
 const EDITABLE_TEXT_SELECTOR = "[data-editable-text], h1, h2, h3, h4, h5, h6, p";
 const IMAGE_STYLE_KEYS = ["position", "left", "top", "right", "bottom", "width", "height"];
@@ -194,21 +194,19 @@ export async function mountPresentationEditor({
   };
 
   const copySelection = () => {
-    if (!selectionIsLive()) return null;
+    if (!selectionIsLive()) return;
     const clone = copyComponentAdjacent(selectedComponent);
-    if (!clone) return null;
+    if (!clone) return;
     editor.select(clone);
     notifyHistory();
-    return clone;
   };
 
   const deleteSelection = () => {
-    if (!selectionIsLive()) return false;
+    if (!selectionIsLive()) return;
     const target = selectedComponent;
     clearSelectionState();
-    const removed = removeComponent(target);
+    target.remove();
     notifyHistory();
-    return removed;
   };
 
   const undo = () => {
@@ -618,10 +616,6 @@ function toComponentImageStyle(box) {
     width: box.width + "px",
     height: box.height + "px",
   };
-}
-
-function clamp(value, minimum, maximum) {
-  return Math.min(Math.max(value, minimum), Math.max(minimum, maximum));
 }
 
 function colorToHex(value) {

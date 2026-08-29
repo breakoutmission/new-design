@@ -13,14 +13,13 @@ export function copyComponentAdjacent(component) {
   return clone;
 }
 
-export function removeComponent(component) {
-  if (!component) return false;
-  component.remove();
-  return true;
+export function clamp(value, minimum, maximum) {
+  return Math.min(Math.max(value, minimum), Math.max(minimum, maximum));
 }
 
 // 绝对定位元素（如移动过的图片）的副本若不做偏移，会与原件完全重叠；
 // 流式布局元素插入相邻位置后自然排在原件附近，无需偏移。
+// 坐标沿用图片拖拽的既有约定：以幻灯片为参照（imageRect - slideRect）。
 function buildAdjacentOffsetStyle(component) {
   const element = component.getEl();
   const slide = element?.closest?.(".slide");
@@ -49,8 +48,4 @@ function buildAdjacentOffsetStyle(component) {
     right: "auto",
     bottom: "auto",
   };
-}
-
-function clamp(value, minimum, maximum) {
-  return Math.min(Math.max(value, minimum), Math.max(minimum, maximum));
 }

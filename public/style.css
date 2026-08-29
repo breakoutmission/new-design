@@ -866,7 +866,6 @@ textarea:focus {
   padding-top: 16px;
   border-top: 1px solid var(--line);
 }
-.element-actions[hidden] { display: none; }
 .element-actions button {
   display: inline-flex;
   align-items: center;
@@ -882,12 +881,12 @@ textarea:focus {
 }
 .element-actions button:hover:not(:disabled) { border-color: #111318; background: #f4f6fa; }
 .element-actions button.element-action-danger {
-  border-color: rgba(197, 82, 74, .45);
-  color: #c5524a;
+  border-color: rgba(217, 45, 32, .4);
+  color: var(--danger);
 }
 .element-actions button.element-action-danger:hover:not(:disabled) {
-  border-color: #c5524a;
-  background: rgba(197, 82, 74, .07);
+  border-color: var(--danger);
+  background: #fff6f5;
 }
 
 /* ---------- Dialog and toast ---------- */

@@ -59,6 +59,10 @@ const partialDeckHtml = [
   "<h1>锁定元素验收标题</h1>",
   "<p>本页带 SVG 装饰，装饰保持原样显示。</p>",
   "</section>",
+  '<section class="slide" style="background:linear-gradient(#f7f4e8,#e2ddd0)">',
+  "<h1>渐变背景页标题</h1>",
+  "<p>本页背景渐变保持原样显示。</p>",
+  "</section>",
   "</body>",
   "</html>",
 ].join("\n");
@@ -428,6 +432,19 @@ try {
   assert.ok(
     (await partialEditorFrame.locator("svg circle").count()) >= 1,
     "锁定元素不得被复制或删除流程改动",
+  );
+
+  // 背景渐变同样锁定：点击后不出现复制/删除入口，渐变保持原样。
+  await partialEditorFrame.locator(".slide").nth(1).click({ position: { x: 40, y: 600 }, force: true });
+  await page.getByText("已锁定：这个元素不可编辑", { exact: true }).waitFor();
+  assert.equal(await copyButton.isVisible(), false, "背景渐变不得出现复制入口");
+  assert.equal(await deleteButton.isVisible(), false, "背景渐变不得出现删除入口");
+  assert.ok(
+    await partialEditorFrame
+      .locator(".slide")
+      .nth(1)
+      .evaluate((element) => getComputedStyle(element).backgroundImage.includes("linear-gradient")),
+    "背景渐变必须保持原样显示",
   );
 
   await page.screenshot({
