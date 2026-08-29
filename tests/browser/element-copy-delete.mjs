@@ -182,7 +182,7 @@ try {
   assert.equal(await deckHeadings.count(), 1, "重做必须再次删除元素");
 
   // ---- 锁定元素：不出现复制/删除入口，仍显示既有不可编辑提示 ----
-  const lockedStatus = page.getByText("已锁定：这个元素不可编辑", { exact: true });
+  const lockedStatus = page.locator("#selection-status", { hasText: "已锁定：这个元素不可编辑" });
   await editorFrame.locator(".slide").first().click({ position: { x: 20, y: 20 }, force: true });
   await lockedStatus.waitFor();
   assert.equal(await copyButton.isVisible(), false, "锁定元素不得出现复制入口");
@@ -426,7 +426,7 @@ try {
     "锁定 SVG 必须在编辑画布中原样保留",
   );
   await partialEditorFrame.locator("svg circle").click({ force: true });
-  await page.getByText("已锁定：这个元素不可编辑", { exact: true }).waitFor();
+  await page.locator("#selection-status", { hasText: "已锁定：这个元素不可编辑" }).waitFor();
   assert.equal(await copyButton.isVisible(), false, "导入项目锁定元素不得出现复制入口");
   assert.equal(await deleteButton.isVisible(), false, "导入项目锁定元素不得出现删除入口");
   assert.ok(
@@ -436,7 +436,7 @@ try {
 
   // 背景渐变同样锁定：点击后不出现复制/删除入口，渐变保持原样。
   await partialEditorFrame.locator(".slide").nth(1).click({ position: { x: 40, y: 600 }, force: true });
-  await page.getByText("已锁定：这个元素不可编辑", { exact: true }).waitFor();
+  await page.locator("#selection-status", { hasText: "已锁定：这个元素不可编辑" }).waitFor();
   assert.equal(await copyButton.isVisible(), false, "背景渐变不得出现复制入口");
   assert.equal(await deleteButton.isVisible(), false, "背景渐变不得出现删除入口");
   assert.ok(
