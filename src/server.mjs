@@ -7,6 +7,7 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
+import { IMPORT_MAX_BYTES, prepareImportedHtml, runImportCheck } from "./import-checker.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publicDir = path.join(root, "public");
@@ -20,6 +21,7 @@ const dataDir = path.resolve(
   readArg("--data-dir") || process.env.AI_PRESENTATION_DATA_DIR || path.join(root, ".app-data"),
 );
 const projectsDir = path.join(dataDir, "projects");
+const originalsDir = path.join(dataDir, "originals");
 const generatorMode = args.includes("--fixture")
   ? "fixture"
   : process.env.AI_PRESENTATION_GENERATOR || "codex";
@@ -124,6 +126,11 @@ app.delete("/api/projects/:id", async (req, res, next) => {
     }
 
     await unlink(projectPath(project.id));
+    if (project.sourceType === "imported" && project.originalFile) {
+      await unlink(path.join(dataDir, project.originalFile)).catch(() => {
+        // 原始副本缺失不阻塞项目删除。
+      });
+    }
     res.status(204).end();
   } catch (error) {
     next(error);
@@ -131,6 +138,77 @@ app.delete("/api/projects/:id", async (req, res, next) => {
     releaseProjectOperation(req.params.id, operation);
   }
 });
+
+const importRawHandler = express.raw({
+  type: ["text/html", "application/xhtml+xml"],
+  limit: IMPORT_MAX_BYTES,
+});
+
+app.post("/api/imports", (req, res, next) => {
+  const fileName = String(req.query.filename || "").trim();
+  if (!fileName) {
+    res.status(400).json({ error: "上传请求缺少文件名。" });
+    return;
+  }
+  const declaredLength = Number(req.headers["content-length"] || 0);
+  if (declaredLength > IMPORT_MAX_BYTES) {
+    req.resume();
+    const { report } = runImportCheck({ fileName, fileSize: declaredLength, html: null });
+    res.status(422).json({ error: "这份文件暂时无法导入。", report });
+    return;
+  }
+
+  importRawHandler(req, res, (error) => {
+    if (error) {
+      next(error);
+      return;
+    }
+    void importUpload({ req, res, fileName }).catch(next);
+  });
+});
+
+async function importUpload({ req, res, fileName }) {
+  const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.from([]);
+  const { verdict, passed, report, html } = runImportCheck({
+    fileName,
+    fileSize: bytes.length,
+    html: bytes.toString("utf8"),
+  });
+  if (!passed) {
+    res.status(422).json({ error: "这份文件暂时无法导入。", report });
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const id = randomUUID();
+  const project = {
+    id,
+    name: deriveImportedName(fileName),
+    source: "",
+    templateId: null,
+    templateName: "导入",
+    status: "可编辑",
+    createdAt: now,
+    updatedAt: now,
+    html,
+    report: null,
+    generation: null,
+    sourceType: "imported",
+    originalFileName: fileName,
+    originalFile: "originals/" + id + ".html",
+    importReport: report,
+    verdict,
+  };
+  await mkdir(originalsDir, { recursive: true });
+  await writeFile(path.join(dataDir, "originals", id + ".html"), bytes);
+  await writeProject(project);
+  res.status(200).json({ project });
+}
+
+function deriveImportedName(fileName) {
+  const base = String(fileName).replace(/\.html?$/i, "").trim();
+  return (base || "导入演示").slice(0, 80);
+}
 
 app.patch("/api/projects/:id", async (req, res, next) => {
   const operation = { type: "save" };
@@ -153,9 +231,14 @@ app.patch("/api/projects/:id", async (req, res, next) => {
       return;
     }
 
-    const prepared = preparePreviewHtml(html, project.templateId);
-    project.html = prepared.html;
-    project.report = prepared.report;
+    if (project.sourceType === "imported") {
+      project.html = prepareImportedPreviewHtml(html);
+      project.report = null;
+    } else {
+      const prepared = preparePreviewHtml(html, project.templateId);
+      project.html = prepared.html;
+      project.report = prepared.report;
+    }
     project.projectData = projectData;
     project.status = "可编辑";
     project.updatedAt = new Date().toISOString();
@@ -299,6 +382,11 @@ app.post("/api/projects/:id/generations", async (req, res) => {
       res.status(404).json({ error: "没有找到这个演示项目。" });
       return;
     }
+    if (project.sourceType === "imported") {
+      releaseGenerationTask(task);
+      res.status(409).json({ error: "导入的演示项目没有源材料，不能重新生成。" });
+      return;
+    }
     if (!["可编辑", "生成失败", "已取消"].includes(project.status)) {
       releaseGenerationTask(task);
       res.status(409).json({ error: "这个项目当前不能重新生成。" });
@@ -349,7 +437,14 @@ app.post("/api/generations/:id/cancel", async (req, res, next) => {
 
 app.use((error, _req, res, _next) => {
   console.error(error);
-  if (!res.headersSent) res.status(500).json({ error: userFacingError(error) });
+  if (!res.headersSent) {
+    const status = Number(error.statusCode || error.status || 500);
+    const message =
+      status === 413
+        ? "文件超过 " + Math.round(IMPORT_MAX_BYTES / (1024 * 1024)) + " MB 大小上限。"
+        : userFacingError(error);
+    res.status(status).json({ error: message });
+  }
 });
 
 app.get("*path", (_req, res) => {
@@ -393,7 +488,9 @@ async function writeProject(project) {
 async function readProject(id) {
   const file = projectPath(id);
   if (!existsSync(file)) return null;
-  return JSON.parse(await readFile(file, "utf8"));
+  const project = JSON.parse(await readFile(file, "utf8"));
+  if (!project.sourceType) project.sourceType = "generated";
+  return project;
 }
 
 async function listProjects() {
@@ -403,15 +500,16 @@ async function listProjects() {
     files.map((file) => readFile(path.join(projectsDir, file), "utf8").then(JSON.parse)),
   );
   return projects
-    .map(
-      ({
+    .map((project) => {
+      const {
         html: _html,
         source: _source,
         generation: _generation,
         projectData: _projectData,
         ...summary
-      }) => summary,
-    )
+      } = project;
+      return { sourceType: project.sourceType || "generated", ...summary };
+    })
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
@@ -628,21 +726,26 @@ function generateWithFixture(source, attempt, task, templateId) {
   });
 }
 
-function preparePreviewHtml(input, templateId) {
-  let html = normalizePageCounter(normalizeTemplateImage(extractCompleteHtml(input)), templateId);
-  const forbidden = [
-    [/file:\/\//i, "HTML 包含本地文件地址。"],
-    [/<form\b/i, "HTML 包含表单。"],
-    [/<script\b[^>]*\bsrc\s*=/i, "HTML 包含外部脚本。"],
-    [/<base\b/i, "HTML 试图改变页面地址基础。"],
-    [/\b(?:fetch|XMLHttpRequest|WebSocket|EventSource)\s*\(/i, "HTML 包含外部数据请求。"],
-    [/navigator\.sendBeacon\s*\(/i, "HTML 包含外部数据发送。"],
-    [/window\.open\s*\(/i, "HTML 试图打开新窗口。"],
-    [/<a\b[^>]*\bdownload(?:\s|=|>)/i, "HTML 包含下载操作。"],
-  ];
-  for (const [pattern, message] of forbidden) {
+const FORBIDDEN_HTML_PATTERNS = [
+  [/file:\/\//i, "HTML 包含本地文件地址。"],
+  [/<form\b/i, "HTML 包含表单。"],
+  [/<script\b[^>]*\bsrc\s*=/i, "HTML 包含外部脚本。"],
+  [/<base\b/i, "HTML 试图改变页面地址基础。"],
+  [/\b(?:fetch|XMLHttpRequest|WebSocket|EventSource)\s*\(/i, "HTML 包含外部数据请求。"],
+  [/navigator\.sendBeacon\s*\(/i, "HTML 包含外部数据发送。"],
+  [/window\.open\s*\(/i, "HTML 试图打开新窗口。"],
+  [/<a\b[^>]*\bdownload(?:\s|=|>)/i, "HTML 包含下载操作。"],
+];
+
+function assertNoForbiddenPatterns(html) {
+  for (const [pattern, message] of FORBIDDEN_HTML_PATTERNS) {
     if (pattern.test(html)) throw new Error(message);
   }
+}
+
+function preparePreviewHtml(input, templateId) {
+  let html = normalizePageCounter(normalizeTemplateImage(extractCompleteHtml(input)), templateId);
+  assertNoForbiddenPatterns(html);
 
   const editableImages = Array.from(
     html.matchAll(/<img\b[^>]*\bdata-editable-image(?=[\s=>])[^>]*>/gi),
@@ -687,6 +790,16 @@ function preparePreviewHtml(input, templateId) {
     html,
     report: { slideCount, editableImageCount, localFileUrls: 0, sandbox: "allow-scripts" },
   };
+}
+
+// 导入项目的保存准备：不做模板专用处理（页码/可编辑图片注入），
+// 只做完整性与安全禁令校验后重新安全化（脚本/内联事件移除 + 导入 CSP）。
+function prepareImportedPreviewHtml(html) {
+  if (!/<!doctype html>/i.test(html) || !/<html[\s>]/i.test(html) || !/<\/html>/i.test(html)) {
+    throw new Error("保存内容不是完整的 HTML。");
+  }
+  assertNoForbiddenPatterns(html);
+  return prepareImportedHtml(html).html;
 }
 
 function normalizePageCounter(html, templateId) {
