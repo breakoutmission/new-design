@@ -1,0 +1,905 @@
+<!doctype html>
+<!--
+  原型（throwaway prototype，非生产代码）
+  问题：在现有 AI Presentation Studio 界面上新增「导入演示」功能，应该长什么样？
+  形态：单文件高保真桌面原型，12 个屏幕，底部浮动切换条（← → 键或点击切换），?screen=N 可直达。
+  设计依据：reference/ 下 4 张现有界面截图（唯一依据，既有页面原样复现）；
+  新增界面全部用截图中已有的组件样式拼装（白卡、药丸按钮、绿色芯片、对话框、等宽计数）。
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>原型 · AI Presentation Studio 导入演示</title>
+<style>
+  :root {
+    --canvas: #f6f7fb;
+    --card: #ffffff;
+    --ink: #17181c;
+    --smoke: #6f7480;
+    --ash: #9aa3ad;
+    --hairline: #ebe8e4;
+    --hairline-cool: #e7e9f0;
+    --green: #65d66f;
+    --green-deep: #277833;
+    --green-mid: #3f9e63;
+    --green-tint: #e9f7ee;
+    --danger: #c84949;
+    --danger-tint: #fdeeee;
+    --amber: #8a6116;
+    --amber-tint: #fdf4dc;
+    --radius-card: 20px;
+    --shadow-card: 0 1px 2px rgba(23,24,28,.04), 0 10px 28px rgba(23,24,28,.05);
+    --shadow-pop: 0 2px 4px rgba(23,24,28,.05), 0 18px 44px rgba(23,24,28,.12);
+    --mono: "Geist Mono", "Cascadia Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0;
+    background: var(--canvas);
+    color: var(--ink);
+    font: 400 14px/1.5 Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  }
+  h1, h2, h3, p { margin: 0; }
+  button { cursor: pointer; font: inherit; }
+
+  /* ============ 应用外壳（与现有截图一致） ============ */
+  .app { display: flex; min-height: 100vh; }
+  .sidebar {
+    width: 232px; flex-shrink: 0; background: #fff;
+    border-right: 1px solid var(--hairline-cool);
+    display: flex; flex-direction: column; gap: 30px;
+    padding: 22px 18px 20px; position: sticky; top: 0; height: 100vh;
+  }
+  .brand { display: flex; align-items: center; gap: 11px; }
+  .brand-icon { width: 34px; height: 34px; flex-shrink: 0; }
+  .brand b { display: block; font-size: 14.5px; font-weight: 700; line-height: 1.25; }
+  .brand small { display: block; color: var(--smoke); font-size: 12px; }
+  .nav { display: flex; flex-direction: column; gap: 6px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 11px; width: 100%;
+    padding: 12px 14px; border: 0; border-radius: 12px;
+    background: transparent; color: #3c414b; font-size: 14.5px; font-weight: 600; text-align: left;
+  }
+  .nav-item svg { flex-shrink: 0; }
+  .nav-item.active { background: #f1f3f6; color: var(--ink); }
+  .side-label { color: var(--ash); font-size: 12px; font-weight: 600; margin: 0 0 10px; }
+  .workspace { display: flex; align-items: center; gap: 11px; }
+  .avatar {
+    width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+    background: #eef1f5; color: #3c414b; display: grid; place-items: center;
+    font-size: 13px; font-weight: 700;
+  }
+  .workspace b { display: block; font-size: 13px; font-weight: 700; }
+  .workspace small { display: block; color: var(--smoke); font-size: 11.5px; margin-top: 2px; }
+  .side-footer { margin-top: auto; display: flex; align-items: center; gap: 11px; }
+  .local-icon {
+    width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
+    background: #2fb344; display: grid; place-items: center;
+  }
+  .local-icon i { width: 10px; height: 10px; border-radius: 3px; background: #fff; }
+  .side-footer b { display: block; font-size: 13px; font-weight: 700; }
+  .side-footer small { display: block; color: var(--smoke); font-size: 11.5px; margin-top: 2px; }
+
+  .main { flex: 1; min-width: 0; }
+
+  /* ============ 通用组件（截图中已有） ============ */
+  .eyebrow { color: var(--ash); font-size: 11px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; }
+  .card {
+    background: var(--card); border: 1px solid var(--hairline-cool);
+    border-radius: var(--radius-card); box-shadow: var(--shadow-card);
+  }
+  .pill {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 9px 16px; border-radius: 999px; border: 1px solid #e3e5ea;
+    background: #fff; color: var(--ink); font-size: 13px; font-weight: 600;
+  }
+  .pill.disabled { background: #f3f4f6; border-color: #f3f4f6; color: #b9bfc7; }
+  .pill-dark {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 9px 18px; border-radius: 999px; border: 1px solid #101010;
+    background: #101010; color: var(--green); font-size: 13px; font-weight: 700;
+  }
+  .pill-danger {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 9px 16px; border-radius: 999px; border: 1px solid #eec3c3;
+    background: #fff; color: var(--danger); font-size: 13px; font-weight: 600;
+  }
+  .orb {
+    width: 52px; height: 52px; flex-shrink: 0; border-radius: 50%;
+    background: #101010; display: grid; place-items: center;
+  }
+  .back-circle {
+    width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%;
+    border: 1px solid #e3e5ea; background: #fff; display: grid; place-items: center;
+  }
+  .pagebar { display: flex; align-items: center; gap: 16px; padding: 26px 36px 22px; }
+  .pagebar .title { font-size: 23px; font-weight: 800; letter-spacing: -.01em; margin-top: 2px; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #2fb344; }
+  .chip-step {
+    width: 36px; height: 36px; flex-shrink: 0; border-radius: 10px;
+    background: var(--green-tint); color: #2e9e57;
+    display: grid; place-items: center; font-size: 13px; font-weight: 700;
+  }
+
+  /* 首页 */
+  .home { position: relative; padding-bottom: 60px; }
+  .home-glow {
+    position: absolute; inset: 0 0 auto 0; height: 560px; pointer-events: none;
+    background:
+      radial-gradient(900px 340px at 8% -12%, rgba(118, 150, 246, .32), transparent 68%),
+      radial-gradient(900px 360px at 88% -14%, rgba(247, 158, 200, .30), transparent 68%);
+  }
+  .home-dots {
+    position: absolute; inset: 560px 0 0 0; pointer-events: none;
+    background-image: radial-gradient(rgba(23,24,28,.07) 1px, transparent 1.4px);
+    background-size: 26px 26px;
+    mask-image: linear-gradient(to bottom, rgba(0,0,0,.7), transparent 55%);
+    -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,.7), transparent 55%);
+  }
+  .home-inner { position: relative; }
+  .hero { text-align: center; padding: 74px 40px 0; }
+  .hero-brand { display: flex; align-items: center; justify-content: center; gap: 16px; font-size: 46px; font-weight: 800; letter-spacing: -.02em; }
+  .hero-tagline { margin-top: 22px; font-size: 27px; font-weight: 700; letter-spacing: -.01em; }
+  .hero-copy { margin-top: 12px; color: var(--smoke); font-size: 15px; }
+  .entries { display: flex; gap: 22px; justify-content: center; align-items: stretch; max-width: 1040px; margin: 44px auto 0; padding: 0 40px; }
+  .entry-card {
+    display: flex; align-items: center; gap: 16px; padding: 20px 22px;
+    border-radius: var(--radius-card); text-align: left;
+    background: #fff; border: 1px solid var(--hairline-cool); box-shadow: var(--shadow-card);
+  }
+  .entry-card.main { flex: 1.55; }
+  .entry-card.sub { flex: 1; }
+  .plus-circle {
+    width: 52px; height: 52px; flex-shrink: 0; border-radius: 50%;
+    background: #f1f3f6; color: #3c414b; display: grid; place-items: center;
+  }
+  .entry-copy { flex: 1; min-width: 0; }
+  .entry-copy b { display: block; font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
+  .entry-copy small { display: block; margin-top: 4px; color: var(--smoke); font-size: 12.5px; }
+  .recent { max-width: 1080px; margin: 64px auto 0; padding: 0 40px; }
+  .recent-head { display: flex; align-items: flex-end; justify-content: space-between; }
+  .recent-head h2 { font-size: 26px; font-weight: 800; letter-spacing: -.01em; margin-top: 8px; }
+  .count-pill { padding: 7px 14px; border-radius: 999px; border: 1px solid #e3e5ea; background: #fff; color: var(--smoke); font-size: 12.5px; font-weight: 600; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 26px; margin-top: 26px; }
+  .pcard { border-radius: 18px; padding: 12px 12px 14px; background: #fff; border: 1px solid var(--hairline-cool); box-shadow: var(--shadow-card); }
+  .cover {
+    position: relative; overflow: hidden; aspect-ratio: 16/9;
+    border-radius: 12px; padding: 18px 20px;
+  }
+  .cover .kicker { font-size: 10.5px; font-weight: 700; letter-spacing: .22em; }
+  .cover .ring { position: absolute; border: 1.5px solid currentColor; border-radius: 50%; opacity: .5; }
+  .cover .tpl-pill {
+    position: absolute; top: 14px; right: 14px; padding: 4px 11px;
+    border: 1.5px solid currentColor; border-radius: 999px; font-size: 11px; font-weight: 600; opacity: .85;
+  }
+  .cover .c-title { position: absolute; left: 20px; bottom: 40px; font: 700 26px/1.2 Georgia, "Noto Serif SC", serif; letter-spacing: .01em; }
+  .cover .c-num { position: absolute; right: 20px; bottom: 14px; font-size: 13px; font-weight: 600; opacity: .8; }
+  .cover.grove-warm { background: #edb87f; color: #593311; }
+  .cover.grove-sage { background: #dfe7d8; color: #33502d; }
+  .pcard .kind { margin: 12px 4px 0; color: var(--ash); font-size: 11px; }
+  .pcard h3 { margin: 3px 4px 0; font-size: 16.5px; font-weight: 700; }
+  .pcard .meta { display: flex; align-items: center; justify-content: space-between; margin: 10px 4px 2px; color: var(--smoke); font-size: 12.5px; }
+  .pcard .meta .st { color: #7d8a80; font-weight: 600; }
+
+  /* 新建演示页 */
+  .new-wrap { max-width: 1180px; margin: 0 auto; padding: 0 36px 60px; }
+  .panels { display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(360px, 1fr); gap: 24px; align-items: start; }
+  .panel { padding: 30px 32px 32px; }
+  .panel-head { display: flex; gap: 15px; align-items: flex-start; }
+  .panel-head h2 { font-size: 21px; font-weight: 800; letter-spacing: -.01em; }
+  .panel-head p { margin-top: 6px; color: var(--smoke); font-size: 13px; }
+  .source-box {
+    width: 100%; min-height: 540px; margin-top: 24px; padding: 22px 24px;
+    border: 1.5px solid #bfe8cc; border-radius: 14px; background: #fff;
+    color: #b6bcc4; font-size: 15px; line-height: 1.9; resize: none; outline: none; font: inherit;
+  }
+  .tpl-list { display: flex; flex-direction: column; gap: 14px; margin-top: 24px; }
+  .tpl-option {
+    display: flex; align-items: center; gap: 14px; padding: 13px 14px;
+    border: 1.5px solid #e7e9f0; border-radius: 14px; background: #fff;
+  }
+  .tpl-option.selected { border-color: var(--green-mid); }
+  .tpl-swatch {
+    width: 62px; height: 62px; flex-shrink: 0; border-radius: 9px; position: relative; overflow: hidden;
+    background: #16240f; display: grid; place-items: center;
+  }
+  .tpl-swatch span { color: #d8d3c4; font: 700 21px Georgia, "Noto Serif SC", serif; }
+  .tpl-swatch i { position: absolute; right: -6px; top: 12px; width: 26px; height: 3.5px; background: #c8524a; transform: rotate(-32deg); }
+  .radio-dot { width: 15px; height: 15px; flex-shrink: 0; border-radius: 50%; border: 5px solid #3573f0; background: #fff; }
+  .radio-dot.off { border: 1.5px solid #c9cdd6; }
+  .tpl-copy b { display: block; font-size: 15px; font-weight: 700; }
+  .tpl-copy small { display: block; margin-top: 4px; color: var(--smoke); font-size: 12.5px; line-height: 1.55; }
+  .send-btn {
+    width: 100%; margin-top: 22px; padding: 15px 20px; border: 0; border-radius: 13px;
+    background: #c9ccd2; color: #fff; font-size: 14.5px; font-weight: 700;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .send-note { margin-top: 13px; color: var(--smoke); font-size: 12.5px; line-height: 1.6; }
+
+  /* 预览 / 编辑 */
+  .stage-shell { margin: 0 36px 36px; padding: 16px; border-radius: var(--radius-card); background: #eceef2; }
+  .deck-shell { position: relative; border-radius: 10px; overflow: hidden; background: #1d2b1c; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+  .deck { position: relative; aspect-ratio: 16/8.2; padding: 8.5% 9%; color: #d8d3c4; }
+  .deck .crumb { display: inline-flex; gap: 14px; color: #d98e57; font-size: 12.5px; letter-spacing: .28em; font-weight: 600; }
+  .deck .crumb .u { border-bottom: 1.5px solid #c8524a; padding-bottom: 8px; }
+  .deck h1.slide-title { margin-top: 7.5%; font: 400 clamp(30px, 4.6vw, 62px)/1.15 Georgia, "Noto Serif SC", serif; color: #d8d3c4; letter-spacing: .01em; }
+  .deck h1.slide-title em { font-style: italic; color: #4d6bf0; }
+  .deck .sub { margin-top: 4.5%; color: #e5c86e; font-size: clamp(12px, 1.35vw, 18px); letter-spacing: .06em; }
+  .deck .foot {
+    position: absolute; left: 9%; right: 9%; bottom: 7%;
+    display: flex; justify-content: space-between; align-items: center;
+    border-top: 1px solid rgba(216,211,196,.28); padding-top: 14px;
+    color: #b9b4a4; font-size: 10.5px; letter-spacing: .24em; font-weight: 600;
+  }
+  .deck .ghost { position: absolute; right: 5%; bottom: -4%; font: 400 200px/1 Georgia, serif; color: rgba(216,211,196,.1); }
+  .deck .counter {
+    position: absolute; top: 18px; right: 18px; padding: 7px 14px;
+    background: rgba(12,16,12,.82); border-radius: 999px; color: #fff;
+    font: 600 13px var(--mono); letter-spacing: .06em;
+  }
+  .deck .pager { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 7px; }
+  .deck .pager i { width: 6px; height: 6px; border-radius: 50%; background: rgba(216,211,196,.35); }
+  .deck .pager i.on { background: #f2efe6; }
+
+  .toolbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+  .editable-flag { display: flex; align-items: center; gap: 8px; color: #4c525c; font-size: 13px; font-weight: 600; margin-right: 4px; }
+
+  .edit-stage { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; }
+  .props { padding: 22px 20px; border-radius: 16px; background: #fff; border: 1px solid var(--hairline-cool); align-self: start; }
+  .props .lab { color: var(--smoke); font-size: 12.5px; }
+  .props .sel { margin-top: 6px; font-size: 15px; font-weight: 700; }
+  .props hr { border: 0; border-top: 1px solid var(--hairline-cool); margin: 18px 0; }
+  .field { margin-top: 14px; }
+  .field label { display: block; margin-bottom: 7px; color: #4c525c; font-size: 13px; font-weight: 600; }
+  .field textarea { width: 100%; min-height: 86px; padding: 11px 12px; border: 1px solid #e3e5ea; border-radius: 9px; font: inherit; resize: vertical; outline: none; }
+  .field input, .field select {
+    width: 100%; height: 40px; padding: 0 12px; border: 1px solid #e3e5ea;
+    border-radius: 9px; font: inherit; background: #fff; outline: none;
+  }
+  .field input[type="color"] { padding: 4px; height: 40px; }
+  .field .mono { font-family: var(--mono); }
+  .align-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .align-row span {
+    height: 38px; display: grid; place-items: center; border-radius: 9px;
+    background: #f1f3f6; color: #3c414b; font-size: 13.5px; font-weight: 600;
+  }
+  .align-row span.off { color: #b9bfc7; }
+  .props-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
+  .props-actions .pill, .props-actions .pill-danger { justify-content: center; }
+  .lock-hint {
+    display: flex; gap: 10px; margin-top: 18px; padding: 12px 13px;
+    border-radius: 11px; background: #f6f7f9; color: var(--smoke); font-size: 12.5px; line-height: 1.55;
+  }
+  .lock-hint b { color: #4c525c; }
+
+  /* 上传对话框 */
+  .overlay { position: fixed; inset: 0; background: rgba(23,24,28,.44); display: grid; place-items: center; z-index: 30; }
+  .dialog { width: min(560px, calc(100vw - 48px)); border-radius: 22px; background: #fff; box-shadow: var(--shadow-pop); padding: 30px 30px 26px; }
+  .dialog-head { display: flex; align-items: flex-start; justify-content: space-between; }
+  .dialog-head h2 { font-size: 21px; font-weight: 800; letter-spacing: -.01em; margin-top: 6px; }
+  .x-btn { width: 34px; height: 34px; border-radius: 50%; border: 0; background: #f1f3f6; color: #6f7480; font-size: 15px; }
+  .dropzone {
+    margin-top: 22px; padding: 44px 24px; text-align: center;
+    border: 2px dashed #c9cdd6; border-radius: 16px; background: #fafbfd;
+  }
+  .dropzone .dz-icon { width: 52px; height: 52px; margin: 0 auto; border-radius: 50%; background: #eceef2; display: grid; place-items: center; }
+  .dropzone b { display: block; margin-top: 14px; font-size: 15.5px; font-weight: 700; }
+  .dropzone .hint { margin-top: 6px; color: var(--smoke); font-size: 12.5px; }
+  .file-chip {
+    margin-top: 16px; display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px; border: 1px solid var(--hairline-cool); border-radius: 13px; background: #fff;
+  }
+  .file-chip .f-icon { width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: var(--green-tint); display: grid; place-items: center; }
+  .file-chip b { display: block; font-size: 14px; font-weight: 700; }
+  .file-chip small { display: block; margin-top: 2px; color: var(--smoke); font-size: 12px; font-family: var(--mono); }
+  .dialog-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 26px; }
+
+  /* 导入检查报告 */
+  .report-wrap { max-width: 880px; margin: 0 auto; padding: 0 36px 70px; }
+  .result-badge {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 11px 20px; border-radius: 999px; font-size: 15.5px; font-weight: 800;
+  }
+  .result-badge .b-icon { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-size: 13px; }
+  .result-badge.pass { background: var(--green-tint); color: var(--green-deep); border: 1px solid #bfe6cd; }
+  .result-badge.pass .b-icon { background: #2fb344; }
+  .result-badge.partial { background: var(--amber-tint); color: var(--amber); border: 1px solid #f0dfa8; }
+  .result-badge.partial .b-icon { background: #e3a93c; }
+  .result-badge.blocked { background: var(--danger-tint); color: var(--danger); border: 1px solid #f3c4c4; }
+  .result-badge.blocked .b-icon { background: var(--danger); }
+  .badge-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 6px 0 18px; }
+  .badge-row .note { color: var(--smoke); font-size: 12.5px; }
+  .file-card { display: flex; align-items: center; gap: 16px; padding: 18px 20px; }
+  .file-card .f-icon { width: 48px; height: 48px; flex-shrink: 0; border-radius: 13px; background: #f1f3f6; display: grid; place-items: center; }
+  .file-card b { display: block; font-size: 16px; font-weight: 700; }
+  .file-card small { display: block; margin-top: 3px; color: var(--smoke); font-size: 12px; font-family: var(--mono); letter-spacing: .02em; }
+  .rules { margin-top: 22px; padding: 10px 22px 14px; }
+  .rule { display: flex; align-items: center; gap: 13px; padding: 15px 0; border-bottom: 1px solid #f1f2f5; }
+  .rule:last-child { border-bottom: 0; }
+  .rule .r-icon { width: 26px; height: 26px; flex-shrink: 0; border-radius: 50%; display: grid; place-items: center; font-size: 12.5px; font-weight: 800; }
+  .rule.pass .r-icon { background: #e5f6eb; color: #277833; }
+  .rule.lock .r-icon { background: #eef0f4; color: #6f7480; }
+  .rule.bad .r-icon { background: var(--danger-tint); color: var(--danger); }
+  .rule .r-text b { display: block; font-size: 14.5px; font-weight: 600; }
+  .rule .r-text small { display: block; margin-top: 2px; color: var(--smoke); font-size: 12.5px; }
+  .rule .r-state { margin-left: auto; flex-shrink: 0; padding: 4px 11px; border-radius: 999px; font-size: 11.5px; font-weight: 700; }
+  .rule.pass .r-state { background: var(--green-tint); color: var(--green-deep); }
+  .rule.lock .r-state { background: #eef0f4; color: #6f7480; }
+  .rule.bad .r-state { background: var(--danger-tint); color: var(--danger); }
+  .group-head { display: flex; align-items: center; gap: 9px; padding: 18px 0 4px; color: #4c525c; font-size: 13px; font-weight: 800; }
+  .group-head:first-child { padding-top: 12px; }
+  .group-head .g-count { color: var(--ash); font-weight: 600; font-family: var(--mono); font-size: 12px; }
+  .report-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 26px; }
+  .report-actions .spacer { margin-right: auto; display: flex; align-items: center; gap: 8px; color: var(--smoke); font-size: 13px; }
+
+  /* 交互示意 */
+  .demo-wrap { max-width: 940px; margin: 0 auto; padding: 10px 36px 80px; }
+  .demo-card { padding: 34px 34px 26px; }
+  .demo-slide {
+    position: relative; aspect-ratio: 16/8.6; border-radius: 14px;
+    background: #fbf7ef; border: 1px solid #eee5d4; overflow: hidden;
+  }
+  .demo-slide .pagechip { position: absolute; top: 14px; right: 14px; padding: 5px 12px; background: #1d2b1c; color: #fff; border-radius: 999px; font: 600 12px var(--mono); }
+  .tbox { position: absolute; z-index: 2; padding: 10px 14px; border-radius: 8px; }
+  .tbox .t-line { height: 12px; border-radius: 4px; background: #44403b; opacity: .85; }
+  .tbox .t-line.short { width: 62%; opacity: .35; margin-top: 7px; }
+  .tbox.moved { outline: 3px solid #c25545; outline-offset: 2px; background: #fff; box-shadow: var(--shadow-card); }
+  .tbox.moved .tag { position: absolute; top: -26px; left: 0; padding: 3px 10px; border-radius: 999px; background: #101010; color: var(--green); font-size: 11px; font-weight: 700; }
+  .tbox.ghost-dash { border: 2px dashed #b6bcc4; background: transparent; display: grid; place-items: center; }
+  .tbox.ghost-dash span { color: #9aa3ad; font-size: 12px; font-weight: 600; }
+  .demo-arrow { position: absolute; z-index: 1; pointer-events: none; }
+  .demo-body { position: absolute; left: 7%; bottom: 9%; }
+  .demo-body .ln { height: 10px; border-radius: 4px; background: #e3ddd0; margin-top: 9px; }
+  .demo-img {
+    position: absolute; right: 7%; bottom: 9%; width: 24%; aspect-ratio: 16/9;
+    border-radius: 10px; background: #dfe7d8; display: grid; place-items: center;
+    color: #58714f; font-size: 12.5px; font-weight: 600;
+  }
+  .demo-caption { margin-top: 22px; display: flex; gap: 10px; align-items: flex-start; justify-content: center; color: var(--smoke); font-size: 14px; text-align: center; }
+  .demo-caption .dot-g { width: 8px; height: 8px; border-radius: 50%; background: #2fb344; margin-top: 6px; flex-shrink: 0; }
+
+  /* ============ 原型切换条（非设计的一部分） ============ */
+  .switcher {
+    position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+    z-index: 50; display: flex; align-items: center; gap: 4px;
+    background: #101010; color: #fff; border-radius: 999px; padding: 6px 8px;
+    box-shadow: 0 12px 32px rgba(0,0,0,.35); font-size: 12.5px;
+  }
+  .switcher button {
+    border: 0; background: transparent; color: #fff; width: 32px; height: 32px;
+    border-radius: 50%; font-size: 15px; display: grid; place-items: center;
+  }
+  .switcher button:hover { background: rgba(255,255,255,.14); }
+  .switcher .label { padding: 0 10px; font-weight: 600; white-space: nowrap; }
+  .switcher .label small { color: #9aa3ad; font-weight: 500; margin-left: 8px; }
+  .switcher .proto-tag {
+    padding: 4px 10px; margin-right: 4px; border-radius: 999px;
+    background: rgba(101,214,111,.16); color: var(--green); font-weight: 700; font-size: 10.5px; letter-spacing: .08em;
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= 通用外壳模板（每屏复用） ================= -->
+<template id="tpl-sidebar"></template>
+
+<div id="screens"></div>
+<div class="switcher" id="switcher">
+  <span class="proto-tag">PROTOTYPE</span>
+  <button id="prev" aria-label="上一屏">←</button>
+  <span class="label" id="sw-label"></span>
+  <button id="next" aria-label="下一屏">→</button>
+</div>
+
+<script>
+/* ---------- 公共片段 ---------- */
+const iconBrand = (s) => `<svg class="brand-icon" width="${s}" height="${s}" viewBox="0 0 34 34" fill="none"><rect x="1.5" y="1.5" width="31" height="31" rx="9" stroke="#17181c" stroke-width="2.4"/><path d="M11 22.5 23.5 11l-3.4 11.5-3-3.4z" fill="#17181c" stroke="#17181c" stroke-width="1.6" stroke-linejoin="round"/></svg>`;
+const iconHome = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V20a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V9.5"/></svg>`;
+const iconPlus = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`;
+const iconArrowUp = (c) => `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg>`;
+const iconArrowDown = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#65d66f" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5.5 12.5 12 19l6.5-6.5"/></svg>`;
+const iconImportDoc = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3c414b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 17v-5M9.5 14.5 12 17l2.5-2.5"/></svg>`;
+const iconFile = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3c414b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>`;
+const iconCheck = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5 9.5 18 20 6.5"/></svg>`;
+const iconLock = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>`;
+const iconX = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>`;
+const iconUpload = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3c414b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 8.5 12 4l5 4.5"/><path d="M4 16v3a1.5 1.5 0 0 0 1.5 1.5h13A1.5 1.5 0 0 0 20 19v-3"/></svg>`;
+const iconCopy = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+const iconTrash = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>`;
+const iconSwap = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/></svg>`;
+
+const sidebarHTML = (active) => `
+  <aside class="sidebar">
+    <div class="brand">${iconBrand(34)}<span><b>AI Presentation</b><small>Studio</small></span></div>
+    <nav class="nav">
+      <button class="nav-item ${active === "home" ? "active" : ""}">${iconHome}<span>项目中心</span></button>
+      <button class="nav-item ${active === "new" ? "active" : ""}">${iconPlus}<span>新建演示</span></button>
+    </nav>
+    <div>
+      <p class="side-label">当前工作区</p>
+      <div class="workspace"><span class="avatar">A</span><span><b>我的演示项目</b><small>保存在这台电脑</small></span></div>
+    </div>
+    <div class="side-footer"><span class="local-icon"><i></i></span><span><b>本机运行</b><small>内容不会上传到云端</small></span></div>
+  </aside>`;
+
+const pagebarHTML = ({ eyebrow, title, right = "", back = true }) => `
+  <div class="pagebar">
+    ${back ? `<span class="back-circle"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#17181c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 5.5 4.5 12l6.5 6.5"/></svg></span>` : ""}
+    <div><p class="eyebrow">${eyebrow}</p><h1 class="title">${title}</h1></div>
+    ${right}
+  </div>`;
+
+const undoRedoSave = `
+  <span class="pill disabled">撤销</span><span class="pill disabled">重做</span><span class="pill disabled">保存</span>`;
+
+const groveSlide = ({ title = "AI 演示<em>工作流</em>", sub = "一个把中文产品材料制作成演示文稿的本地工具。", page = "1 / 6", dots = true, foot = true } = {}) => `
+  <div class="deck-shell"><div class="deck">
+    <span class="counter">${page}</span>
+    <span class="crumb"><span class="u">本地工具</span><span>›</span><span>中文产品材料</span><span>›</span><span>HTML 演示</span></span>
+    <h1 class="slide-title">${title}</h1>
+    <p class="sub">${sub}</p>
+    ${foot ? `<div class="foot"><span>LOCAL PRESENTATION TOOL</span><span>中文材料 › 完整 HTML</span></div><span class="ghost">01</span>` : ""}
+    ${dots ? `<span class="pager"><i class="on"></i><i></i><i></i><i></i><i></i><i></i></span>` : ""}
+  </div></div>`;
+
+/* ---------- 屏幕定义 ---------- */
+const screens = [];
+
+/* 1 首页 · 现状复现 */
+screens.push({
+  key: "home", label: "首页 · 现状", build: () => `
+  <div class="app">${sidebarHTML("home")}
+    <main class="main"><section class="home">
+      <div class="home-glow"></div><div class="home-dots"></div>
+      <div class="home-inner">
+        <div class="hero">
+          <h1 class="hero-brand">${iconBrand(58)}AI Presentation Studio</h1>
+          <h2 class="hero-tagline">把项目材料，变成一份好讲的演示</h2>
+          <p class="hero-copy">粘贴中文材料，选择现有模板，然后生成、轻量编辑并导出。</p>
+          <div class="entries">
+            <div class="entry-card main">
+              <span class="plus-circle">${iconPlus}</span>
+              <span class="entry-copy"><b>粘贴项目材料，开始制作演示文稿</b><small>项目名称会自动取材料第一行</small></span>
+              <span class="pill" style="margin-right:6px">Grove 模板</span>
+              <span class="orb">${iconArrowUp("#65d66f")}</span>
+            </div>
+          </div>
+        </div>
+        <div class="recent">
+          <div class="recent-head">
+            <div><p class="eyebrow">YOUR WORKSPACE</p><h2>最近项目</h2></div>
+            <span class="count-pill">2 个项目</span>
+          </div>
+          <div class="cards">
+            <article class="pcard">
+              <div class="cover grove-warm"><span class="kicker">AI PRESENTATION</span><span class="tpl-pill">Grove</span><span class="ring" style="width:110px;height:110px;right:14%;top:-24%"></span><span class="ring" style="width:70px;height:70px;left:38%;bottom:-18%"></span><span class="c-title">AI 演示工作流</span><span class="c-num">01</span></div>
+              <p class="kind">演示文稿</p><h3>AI 演示工作流</h3>
+              <p class="meta"><span>最后修改 2026年7月18日 15:31:52</span><span class="st">可编辑</span></p>
+            </article>
+            <article class="pcard">
+              <div class="cover grove-sage"><span class="kicker">AI PRESENTATION</span><span class="tpl-pill">Grove</span><span class="ring" style="width:110px;height:110px;right:14%;top:-24%"></span><span class="ring" style="width:70px;height:70px;left:38%;bottom:-18%"></span><span class="c-title">AI 演示工作流</span><span class="c-num">02</span></div>
+              <p class="kind">演示文稿</p><h3>AI 演示工作流</h3>
+              <p class="meta"><span>最后修改 2026年7月17日 01:32:13</span><span class="st">可编辑</span></p>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section></main>
+  </div>`,
+});
+
+/* 2 新建演示 · 现状复现 */
+screens.push({
+  key: "new", label: "新建演示 · 现状", build: () => `
+  <div class="app">${sidebarHTML("new")}
+    <main class="main">
+      ${pagebarHTML({ eyebrow: "NEW PRESENTATION", title: "新建演示项目" })}
+      <div class="new-wrap"><div class="panels">
+        <div class="card panel">
+          <div class="panel-head"><span class="chip-step">01</span><div><h2>粘贴源材料</h2><p>可以直接粘贴带 Markdown 标记的中文内容，第一行会成为项目名称。</p></div></div>
+          <textarea class="source-box" readonly>第一行：项目名称
+
+继续粘贴项目背景、过程、结果和需要展示的数据……</textarea>
+        </div>
+        <div class="card panel">
+          <div class="panel-head"><span class="chip-step">02</span><div><h2>选择模板</h2><p>只显示当前已经接入的演示模板。</p></div></div>
+          <div class="tpl-list">
+            <div class="tpl-option selected"><span class="radio-dot"></span><span class="tpl-swatch"><span>Gg</span><i></i></span><span class="tpl-copy"><b>Grove</b><small>森林绿画布、米白文字、古典衬线标题和少量锈红强调色。</small></span></div>
+            <div class="tpl-option"><span class="radio-dot off"></span><span class="tpl-swatch" style="background:#fdfae7"><span style="color:#1e2bfa">Aa</span><i style="background:#1e2bfa"></i></span><span class="tpl-copy"><b>Blue Professional</b><small>米白纸张、亮钴蓝强调和现代无衬线商务版式。</small></span></div>
+            <div class="tpl-option"><span class="radio-dot off"></span><span class="tpl-swatch" style="background:#f1ee2e"><span style="color:#1b2566">Aa</span><i style="background:#e26b4a"></i></span><span class="tpl-copy"><b>Biennale Yellow</b><small>高饱和黄色画布、黑色编辑式排版和艺术展览海报结构。</small></span></div>
+          </div>
+          <button class="send-btn"><span>发送并生成</span><span>↑</span></button>
+          <p class="send-note">发送后会直接生成完整演示，不进入聊天，也不会继续追问。</p>
+        </div>
+      </div></div>
+    </main>
+  </div>`,
+});
+
+/* 3 安全预览 · 现状复现 */
+screens.push({
+  key: "preview", label: "安全预览 · 现状", build: () => `
+  <div class="app">${sidebarHTML("none")}
+    <main class="main">
+      ${pagebarHTML({
+        eyebrow: "安全预览 · GROVE", title: "AI 演示工作流",
+        right: `<div class="toolbar-right"><span class="editable-flag"><span class="status-dot"></span>可编辑</span><span class="pill">预览模式</span>${undoRedoSave}<span class="pill">导出 HTML</span><span class="pill">导出 PDF</span><span class="pill-dark">编辑</span><span class="pill">重新生成</span></div>`,
+      })}
+      <div class="stage-shell">${groveSlide()}</div>
+    </main>
+  </div>`,
+});
+
+/* 4 编辑模式 · 现状复现 */
+screens.push({
+  key: "edit", label: "编辑模式 · 现状", build: () => `
+  <div class="app">${sidebarHTML("none")}
+    <main class="main">
+      ${pagebarHTML({
+        eyebrow: "安全预览 · GROVE", title: "AI 演示工作流",
+        right: `<div class="toolbar-right"><span class="editable-flag"><span class="status-dot"></span>可编辑</span><span class="pill">编辑模式</span>${undoRedoSave}<span class="pill">导出 HTML</span><span class="pill">导出 PDF</span><span class="pill-dark">完成编辑</span><span class="pill">重新生成</span></div>`,
+      })}
+      <div class="stage-shell"><div class="edit-stage">
+        ${groveSlide()}
+        <aside class="props">
+          <p class="lab">元素选择</p>
+          <p class="sel">点击画布中的文字或普通内容图片</p>
+          <hr />
+          <div class="field" style="opacity:.5"><label>文字内容</label><textarea disabled></textarea></div>
+          <div class="field" style="opacity:.5"><label>字号</label><input disabled /></div>
+          <div class="field" style="opacity:.5"><label>文字颜色</label><input type="color" disabled value="#b9bfc7" /></div>
+          <div class="field" style="opacity:.5"><label>行距</label><input disabled /></div>
+          <div class="field" style="opacity:.5"><label>对齐</label><div class="align-row"><span class="off">左</span><span class="off">中</span><span class="off">右</span></div></div>
+        </aside>
+      </div></div>
+    </main>
+  </div>`,
+});
+
+/* 5 首页 · 含导入演示入口（新增①） */
+screens.push({
+  key: "home-import", label: "首页 · 含导入演示入口", build: () => `
+  <div class="app">${sidebarHTML("home")}
+    <main class="main"><section class="home">
+      <div class="home-glow"></div><div class="home-dots"></div>
+      <div class="home-inner">
+        <div class="hero">
+          <h1 class="hero-brand">${iconBrand(58)}AI Presentation Studio</h1>
+          <h2 class="hero-tagline">把项目材料，变成一份好讲的演示</h2>
+          <p class="hero-copy">粘贴中文材料，选择现有模板，然后生成、轻量编辑并导出。</p>
+          <div class="entries">
+            <div class="entry-card main">
+              <span class="plus-circle">${iconPlus}</span>
+              <span class="entry-copy"><b>粘贴项目材料，开始制作演示文稿</b><small>项目名称会自动取材料第一行</small></span>
+              <span class="orb">${iconArrowUp("#65d66f")}</span>
+            </div>
+            <div class="entry-card sub">
+              <span class="plus-circle">${iconImportDoc}</span>
+              <span class="entry-copy"><b>导入演示</b><small>上传 HTML 演示文稿，继续编辑</small></span>
+              <span class="orb">${iconArrowDown}</span>
+            </div>
+          </div>
+        </div>
+        <div class="recent">
+          <div class="recent-head">
+            <div><p class="eyebrow">YOUR WORKSPACE</p><h2>最近项目</h2></div>
+            <span class="count-pill">2 个项目</span>
+          </div>
+          <div class="cards">
+            <article class="pcard">
+              <div class="cover grove-warm"><span class="kicker">AI PRESENTATION</span><span class="tpl-pill">Grove</span><span class="ring" style="width:110px;height:110px;right:14%;top:-24%"></span><span class="ring" style="width:70px;height:70px;left:38%;bottom:-18%"></span><span class="c-title">AI 演示工作流</span><span class="c-num">01</span></div>
+              <p class="kind">演示文稿</p><h3>AI 演示工作流</h3>
+              <p class="meta"><span>最后修改 2026年7月18日 15:31:52</span><span class="st">可编辑</span></p>
+            </article>
+            <article class="pcard">
+              <div class="cover grove-sage"><span class="kicker">AI PRESENTATION</span><span class="tpl-pill">Grove</span><span class="ring" style="width:110px;height:110px;right:14%;top:-24%"></span><span class="ring" style="width:70px;height:70px;left:38%;bottom:-18%"></span><span class="c-title">AI 演示工作流</span><span class="c-num">02</span></div>
+              <p class="kind">演示文稿</p><h3>AI 演示工作流</h3>
+              <p class="meta"><span>最后修改 2026年7月17日 01:32:13</span><span class="st">可编辑</span></p>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section></main>
+  </div>`,
+});
+
+/* 6 上传对话框（新增②） */
+screens.push({
+  key: "upload", label: "上传对话框", build: () => `
+  <div class="app">${sidebarHTML("home")}
+    <main class="main"><section class="home">
+      <div class="home-glow"></div><div class="home-dots"></div>
+      <div class="home-inner">
+        <div class="hero">
+          <h1 class="hero-brand">${iconBrand(58)}AI Presentation Studio</h1>
+          <h2 class="hero-tagline">把项目材料，变成一份好讲的演示</h2>
+          <p class="hero-copy">粘贴中文材料，选择现有模板，然后生成、轻量编辑并导出。</p>
+          <div class="entries">
+            <div class="entry-card main" style="opacity:.55">
+              <span class="plus-circle">${iconPlus}</span>
+              <span class="entry-copy"><b>粘贴项目材料，开始制作演示文稿</b><small>项目名称会自动取材料第一行</small></span>
+              <span class="orb">${iconArrowUp("#65d66f")}</span>
+            </div>
+            <div class="entry-card sub" style="border-color:#65d66f;box-shadow:0 0 0 3px rgba(101,214,111,.18),var(--shadow-card)">
+              <span class="plus-circle">${iconImportDoc}</span>
+              <span class="entry-copy"><b>导入演示</b><small>上传 HTML 演示文稿，继续编辑</small></span>
+              <span class="orb">${iconArrowDown}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section></main>
+    <div class="overlay">
+      <div class="dialog" role="dialog" aria-label="导入演示">
+        <div class="dialog-head">
+          <div><p class="eyebrow">导入演示</p><h2>上传 HTML 演示文稿</h2></div>
+          <button class="x-btn">✕</button>
+        </div>
+        <div class="dropzone">
+          <span class="dz-icon">${iconUpload}</span>
+          <b>拖拽文件到此处，或点击选择文件</b>
+          <p class="hint">仅支持单个自包含 HTML 文件</p>
+        </div>
+        <div class="file-chip">
+          <span class="f-icon">${iconFile}</span>
+          <span style="flex:1;min-width:0"><b>Grove 秋季产品发布.html</b><small>86 KB · 单文件 · 自包含</small></span>
+          <span class="pill" style="padding:6px 12px">移除</span>
+        </div>
+        <div class="dialog-actions">
+          <button class="pill">取消</button>
+          <button class="pill-dark">开始检查</button>
+        </div>
+      </div>
+    </div>
+  </div>`,
+});
+
+/* 7/8/9 导入检查报告（新增③） */
+const fileCard = `
+  <div class="card file-card">
+    <span class="f-icon">${iconFile}</span>
+    <span style="flex:1;min-width:0"><b>Grove 秋季产品发布.html</b><small>86 KB · 6 页 · 12 张图片 · 刚刚检查</small></span>
+    <span class="pill" style="padding:6px 12px">查看原文件</span>
+  </div>`;
+
+screens.push({
+  key: "report-pass", label: "导入检查报告 · 完全可编辑", build: () => `
+  <div class="app">${sidebarHTML("import")}
+    <main class="main">
+      ${pagebarHTML({ eyebrow: "导入检查报告 · HTML", title: "Grove 秋季产品发布" })}
+      <div class="report-wrap">
+        <div class="badge-row">
+          <span class="result-badge pass"><span class="b-icon">${iconCheck}</span>完全可编辑</span>
+          <span class="note">检查完成 · 未修改原文件</span>
+        </div>
+        ${fileCard}
+        <div class="card rules">
+          <div class="rule pass"><span class="r-icon">${iconCheck}</span><span class="r-text"><b>页面结构识别</b><small>识别出 6 页幻灯片与标题层级</small></span><span class="r-state">通过</span></div>
+          <div class="rule pass"><span class="r-icon">${iconCheck}</span><span class="r-text"><b>已移除 2 段脚本</b><small>预览与编辑不运行原文件脚本</small></span><span class="r-state">通过</span></div>
+          <div class="rule pass"><span class="r-icon">${iconCheck}</span><span class="r-text"><b>3 处 CSS 动画已转为静态</b><small>进入编辑后动画只保留最终画面</small></span><span class="r-state">通过</span></div>
+          <div class="rule pass"><span class="r-icon">${iconCheck}</span><span class="r-text"><b>12 张图片可编辑</b><small>全部为普通内容图片，可拖动与等比例缩放</small></span><span class="r-state">通过</span></div>
+        </div>
+        <div class="report-actions">
+          <span class="spacer"><span class="status-dot"></span>已创建演示项目「Grove 秋季产品发布」</span>
+          <button class="pill">返回首页</button>
+          <button class="pill-dark">进入编辑</button>
+        </div>
+      </div>
+    </main>
+  </div>`,
+});
+
+screens.push({
+  key: "report-partial", label: "导入检查报告 · 部分可编辑", build: () => `
+  <div class="app">${sidebarHTML("import")}
+    <main class="main">
+      ${pagebarHTML({ eyebrow: "导入检查报告 · HTML", title: "Grove 秋季产品发布" })}
+      <div class="report-wrap">
+        <div class="badge-row">
+          <span class="result-badge partial"><span class="b-icon">!</span>部分可编辑</span>
+          <span class="note">检查完成 · 未修改原文件</span>
+        </div>
+        ${fileCard}
+        <div class="card rules">
+          <p class="group-head">可编辑内容 <span class="g-count">2 类</span></p>
+          <div class="rule pass"><span class="r-icon">${iconCheck}</span><span class="r-text"><b>文字内容 42 处</b><small>可修改内容、字号、颜色、行距和对齐方式</small></span><span class="r-state">可编辑</span></div>
+          <div class="rule pass"><span class="r-icon">${iconCheck}</span><span class="r-text"><b>普通内容图片 12 张</b><small>可拖动位置与四角等比例缩放</small></span><span class="r-state">可编辑</span></div>
+          <p class="group-head">将被锁定的内容 <span class="g-count">3 类</span></p>
+          <div class="rule lock"><span class="r-icon">${iconLock}</span><span class="r-text"><b>SVG 装饰图形 4 处</b><small>保持原样显示</small></span><span class="r-state">锁定</span></div>
+          <div class="rule lock"><span class="r-icon">${iconLock}</span><span class="r-text"><b>页眉 Logo 1 处</b><small>保持原样显示</small></span><span class="r-state">锁定</span></div>
+          <div class="rule lock"><span class="r-icon">${iconLock}</span><span class="r-text"><b>背景渐变 6 处</b><small>保持原样显示</small></span><span class="r-state">锁定</span></div>
+        </div>
+        <div class="report-actions">
+          <span class="spacer"><span class="status-dot" style="background:#e3a93c"></span>锁定内容在编辑画布中点击时会提示「已锁定：这个元素不可编辑」</span>
+          <button class="pill">重新上传</button>
+          <button class="pill-dark">仍要进入编辑</button>
+        </div>
+      </div>
+    </main>
+  </div>`,
+});
+
+screens.push({
+  key: "report-blocked", label: "导入检查报告 · 暂不支持", build: () => `
+  <div class="app">${sidebarHTML("import")}
+    <main class="main">
+      ${pagebarHTML({ eyebrow: "导入检查报告 · HTML", title: "Grove 秋季产品发布" })}
+      <div class="report-wrap">
+        <div class="badge-row">
+          <span class="result-badge blocked"><span class="b-icon">${iconX}</span>暂不支持</span>
+          <span class="note">检查完成 · 未创建项目</span>
+        </div>
+        ${fileCard}
+        <div class="card rules">
+          <div class="rule bad"><span class="r-icon">${iconX}</span><span class="r-text"><b>检测到 React 框架</b><small>页面结构由框架接管，无法安全转为可编辑内容</small></span><span class="r-state">原因</span></div>
+          <div class="rule bad"><span class="r-icon">${iconX}</span><span class="r-text"><b>页面内容由脚本动态生成</b><small>检查时得不到稳定页面，无法识别文字与图片</small></span><span class="r-state">原因</span></div>
+        </div>
+        <div class="report-actions">
+          <span class="spacer">原文件未做任何修改，也没有创建演示项目。</span>
+          <button class="pill">返回首页</button>
+          <button class="pill-dark">重新上传</button>
+        </div>
+      </div>
+    </main>
+  </div>`,
+});
+
+/* 10 编辑 · 文字选中（导入项目，新增④） */
+const groveImportSlide = (selected) => `
+  <div class="deck-shell"><div class="deck" style="background:#1d2b1c">
+    <span class="counter">1 / 6</span>
+    <span class="crumb"><span class="u">秋季发布</span><span>›</span><span>产品更新</span><span>›</span><span>HTML 演示</span></span>
+    <h1 class="slide-title" style="${selected === "title" ? "outline:3.5px solid #c25545;outline-offset:8px;border-radius:2px;" : ""}">Grove 秋季<em>产品发布</em></h1>
+    <p class="sub">六页讲清这半年做了什么、为什么值得讲。</p>
+    <div class="foot"><span>GROVE AUTUMN LAUNCH</span><span>导入项目 › 继续编辑</span></div>
+    <span class="ghost">01</span>
+    <span class="pager"><i class="on"></i><i></i><i></i><i></i><i></i><i></i></span>
+  </div></div>`;
+
+screens.push({
+  key: "edit-text", label: "编辑 · 文字选中（导入项目）", build: () => `
+  <div class="app">${sidebarHTML("none")}
+    <main class="main">
+      ${pagebarHTML({
+        eyebrow: "导入项目 · HTML", title: "Grove 秋季产品发布",
+        right: `<div class="toolbar-right"><span class="editable-flag"><span class="status-dot"></span>可编辑</span><span class="pill">编辑模式</span>${undoRedoSave}<span class="pill">导出 HTML</span><span class="pill">导出 PDF</span><span class="pill-dark">完成编辑</span></div>`,
+      })}
+      <div class="stage-shell"><div class="edit-stage">
+        ${groveImportSlide("title")}
+        <aside class="props">
+          <p class="lab">元素选择</p>
+          <p class="sel">已选中文字</p>
+          <hr />
+          <div class="field"><label>文字内容</label><textarea>Grove 秋季产品发布</textarea></div>
+          <div class="field"><label>字体</label><select><option>Playfair Display（衬线）</option><option>Noto Serif SC（中文衬线）</option><option>Inter（无衬线）</option><option>Noto Sans SC（中文无衬线）</option></select></div>
+          <div class="field" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <span><label>字号</label><input class="mono" value="54" /></span>
+            <span><label>粗细</label><select><option>常规 400</option><option selected>中等 500</option><option>粗体 700</option></select></span>
+          </div>
+          <div class="field" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <span><label>文字颜色</label><input type="color" value="#d8d3c4" /></span>
+            <span><label>字间距</label><input class="mono" value="0.5" /></span>
+          </div>
+          <div class="field"><label>行距</label><input class="mono" value="1.2" /></div>
+          <div class="field"><label>对齐</label><div class="align-row"><span>左</span><span class="off">中</span><span class="off">右</span></div></div>
+          <div class="props-actions">
+            <button class="pill">${iconCopy}&nbsp;复制</button>
+            <button class="pill-danger">${iconTrash}&nbsp;删除</button>
+          </div>
+          <div class="lock-hint">${iconLock.replace('width="13" height="13"', 'width="15" height="15" style="flex-shrink:0;margin-top:2px"')}<span><b>已锁定：这个元素不可编辑</b><br />点击 SVG 装饰、Logo 或背景时出现，保持原样显示。</span></div>
+        </aside>
+      </div></div>
+    </main>
+  </div>`,
+});
+
+/* 11 编辑 · 图片选中（导入项目，替换图片） */
+screens.push({
+  key: "edit-image", label: "编辑 · 图片选中（导入项目）", build: () => {
+    const handles = ["nw", "ne", "sw", "se"].map((c) => {
+      const pos = { nw: "left:-8px;top:-8px", ne: "right:-8px;top:-8px", sw: "left:-8px;bottom:-8px", se: "right:-8px;bottom:-8px" }[c];
+      return `<i style="position:absolute;${pos};width:13px;height:13px;background:#c25545;border:2px solid #fff;border-radius:3px;box-shadow:0 0 0 1px #1d2b1c"></i>`;
+    }).join("");
+    return `
+  <div class="app">${sidebarHTML("none")}
+    <main class="main">
+      ${pagebarHTML({
+        eyebrow: "导入项目 · HTML", title: "Grove 秋季产品发布",
+        right: `<div class="toolbar-right"><span class="editable-flag"><span class="status-dot"></span>可编辑</span><span class="pill">编辑模式</span><span class="pill">撤销</span><span class="pill disabled">重做</span><span class="pill">保存</span><span class="pill">导出 HTML</span><span class="pill">导出 PDF</span><span class="pill-dark">完成编辑</span></div>`,
+      })}
+      <div class="stage-shell"><div class="edit-stage">
+        <div class="deck-shell"><div class="deck" style="background:#22301f">
+          <span class="counter">2 / 6</span>
+          <span class="crumb"><span class="u">秋季发布</span><span>›</span><span>产品更新</span><span>›</span><span>HTML 演示</span></span>
+          <h1 class="slide-title" style="font-size:44px;margin-top:4%">本章要点</h1>
+          <div style="position:absolute;left:9%;bottom:20%;color:#d8d3c4;font-size:15px;line-height:1.9;max-width:46%">三组数据、两张图，讲完这一年的变化。</div>
+          <div style="position:absolute;right:9%;top:24%;width:33%;aspect-ratio:16/10;border-radius:10px;background:#33452f;outline:3px solid #c25545;outline-offset:3px">
+            ${handles}
+            <span style="position:absolute;inset:0;display:grid;place-items:center;color:#9fb396;font-size:12.5px">普通内容图片</span>
+          </div>
+          <div class="foot"><span>GROVE AUTUMN LAUNCH</span><span>导入项目 › 继续编辑</span></div>
+          <span class="pager"><i></i><i class="on"></i><i></i><i></i><i></i><i></i></span>
+        </div></div>
+        <aside class="props">
+          <p class="lab">元素选择</p>
+          <p class="sel">已选中普通内容图片</p>
+          <hr />
+          <p style="color:var(--smoke);font-size:13px;line-height:1.7">拖动改变位置，四角控制点等比例缩放；图片始终完整保留在当前幻灯片内。</p>
+          <div class="props-actions" style="grid-template-columns:1fr">
+            <button class="pill" style="justify-content:center">${iconSwap}&nbsp;替换图片</button>
+          </div>
+          <div class="lock-hint">${iconLock.replace('width="13" height="13"', 'width="15" height="15" style="flex-shrink:0;margin-top:2px"')}<span><b>已锁定：这个元素不可编辑</b><br />点击本页的背景装饰时出现，保持原样显示。</span></div>
+        </aside>
+      </div></div>
+    </main>
+  </div>`;
+  },
+});
+
+/* 12 交互示意 · 原位留白（新增⑤） */
+screens.push({
+  key: "demo-placeholder", label: "交互示意 · 原位留白", build: () => `
+  <div class="app">${sidebarHTML("none")}
+    <main class="main">
+      ${pagebarHTML({ eyebrow: "交互示意", title: "文本框拖动后的原位留白" })}
+      <div class="demo-wrap">
+        <div class="card demo-card">
+          <div class="demo-slide">
+            <span class="pagechip">3 / 6</span>
+            <!-- 周围内容：不回填 -->
+            <div class="demo-body">
+              <div class="ln" style="width:250px"></div>
+              <div class="ln" style="width:210px"></div>
+              <div class="ln" style="width:170px"></div>
+            </div>
+            <div class="demo-img">图片 · 保持不动</div>
+            <!-- 原位置：虚线占位框 -->
+            <div class="tbox ghost-dash" style="left:7%;top:14%;width:300px;height:74px"><span>原位置留白</span></div>
+            <!-- 拖动后：新位置实体框 -->
+            <div class="tbox moved" style="right:9%;top:12%;width:300px;height:74px">
+              <span class="tag">拖动后</span>
+              <div class="t-line" style="width:180px"></div>
+              <div class="t-line short"></div>
+            </div>
+            <!-- 拖动路径 -->
+            <svg class="demo-arrow" style="left:32%;top:6%;width:36%;height:180px" viewBox="0 0 340 180" fill="none">
+              <path d="M14 96 C 110 30, 220 22, 316 62" stroke="#27a84a" stroke-width="2.5" stroke-dasharray="1 9" stroke-linecap="round"/>
+              <path d="M300 46 L320 64 L294 70" stroke="#27a84a" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <p class="demo-caption"><span class="dot-g"></span>文本框被拖到新位置后，原位置留下虚线占位框：原位留白，周围内容不回填。占位框只在编辑时显示，不影响导出结果。</p>
+        </div>
+      </div>
+    </main>
+  </div>`,
+});
+
+/* ---------- 切换器 ---------- */
+const root = document.getElementById("screens");
+const label = document.getElementById("sw-label");
+let index = 0;
+const params = new URLSearchParams(location.search);
+const fromUrl = parseInt(params.get("screen", "", 10));
+if (Number.isInteger(fromUrl) && fromUrl >= 1 && fromUrl <= screens.length) index = fromUrl - 1;
+
+function render() {
+  root.innerHTML = screens[index].build();
+  label.innerHTML = (index + 1) + " / " + screens.length + " · " + screens[index].label + '<small>← → 切换</small>';
+  const url = new URL(location.href);
+  url.searchParams.set("screen", String(index + 1));
+  history.replaceState(null, "", url);
+}
+document.getElementById("prev").addEventListener("click", () => { index = (index - 1 + screens.length) % screens.length; render(); });
+document.getElementById("next").addEventListener("click", () => { index = (index + 1) % screens.length; render(); });
+document.addEventListener("keydown", (event) => {
+  const target = event.target;
+  if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+  if (event.key === "ArrowLeft") { index = (index - 1 + screens.length) % screens.length; render(); }
+  if (event.key === "ArrowRight") { index = (index + 1) % screens.length; render(); }
+});
+render();
+</script>
+</body>
+</html>
