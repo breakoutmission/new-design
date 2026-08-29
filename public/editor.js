@@ -1,4 +1,5 @@
 import grapesjs from "/vendor/grapesjs/grapes.mjs";
+import { repairImageSrcProps, syncImportedImageMarks, toLetterSpacingPx } from "./editor-controls.js";
 
 const EDITABLE_TEXT_SELECTOR = "[data-editable-text], h1, h2, h3, h4, h5, h6, p";
 const IMAGE_STYLE_KEYS = ["position", "left", "top", "right", "bottom", "width", "height"];
@@ -41,6 +42,7 @@ export async function mountPresentationEditor({
   frameDocument.head.append(editorSupportStyle);
 
   lockComponents(editor.getWrapper());
+  if (project.sourceType === "imported") syncImportedImageMarks(editor.getWrapper());
   let selectedComponent = null;
   let selectedKind = null;
   let interaction = null;
@@ -73,9 +75,12 @@ export async function mountPresentationEditor({
       (Number.isFinite(computedLineHeight) ? (computedLineHeight / fontSize).toFixed(2) : "1.2");
     return {
       content: element.textContent || "",
+      fontFamily: computed.fontFamily || "",
       fontSize,
+      fontWeight: computed.fontWeight || "400",
       color: colorToHex(computed.color),
       lineHeight,
+      letterSpacing: toLetterSpacingPx(computed.letterSpacing),
       textAlign: computed.textAlign || "left",
     };
   };
@@ -164,6 +169,24 @@ export async function mountPresentationEditor({
     notifyHistory();
   };
 
+  const clearTextStyle = (property) => {
+    if (!selectedComponent || selectedKind !== "text") return;
+    selectedComponent.removeStyle(property);
+    markSelected();
+    notifySelection();
+    notifyHistory();
+  };
+
+  const replaceSelectedImage = (src) => {
+    if (!selectedComponent || selectedKind !== "image") return false;
+    // GrapesJS 图片组件的 HTML 序列化取模型 src 属性（getAttrToHTML → getSrcResult），
+    // 必须经 set({ src }) 更新；仅改 attributes 不会进入保存结果。
+    selectedComponent.set({ src });
+    markSelected();
+    notifyHistory();
+    return true;
+  };
+
   const refreshSelection = () => {
     markSelected();
     notifySelection();
@@ -172,11 +195,13 @@ export async function mountPresentationEditor({
 
   const undo = () => {
     editor.UndoManager.undo();
+    repairImageSrcProps(editor.getWrapper());
     refreshSelection();
   };
 
   const redo = () => {
     editor.UndoManager.redo();
+    repairImageSrcProps(editor.getWrapper());
     refreshSelection();
   };
 
@@ -376,6 +401,8 @@ export async function mountPresentationEditor({
     nextSlide,
     updateTextContent,
     updateTextStyle,
+    clearTextStyle,
+    replaceSelectedImage,
     undo,
     redo,
     historyState,

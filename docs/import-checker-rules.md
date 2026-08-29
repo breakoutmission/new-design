@@ -97,3 +97,7 @@ file-type → file-size → file-integrity
 4. 报告新增可选展示字段：`animationCount`（number）、`lockedElements`（`{category, count, reason}[]`）、`editableContent`（`{category, count, note}[]`）。
 5. 评估顺序在冻结五条的相对顺序之间插入新规则（`script-removal` 仍最后）；硬性不支持组整组评估后并列展示。
 6. `page-structure` 的 `detail` 现注明命中的页面识别规则（如「通过「slide 类名规则」识别出 3 页幻灯片」）。
+
+## 能力说明联动（Issue #16，仅用户可读文案）
+
+编辑面板补齐排版能力（字体、粗细、字间距）并新增本地图片替换后，`editableContent` 两条 `note` 同步为「可修改内容、字体、字号、颜色、粗细、行距、字间距和对齐方式」与「可拖动位置、四角等比例缩放和替换图片内容」。报告字段名与类型不变；固定样本见 `tests/import-checker.mjs` I 组用例。

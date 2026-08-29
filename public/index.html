@@ -204,10 +204,28 @@
               <fieldset id="text-controls" class="text-controls" disabled>
                 <label for="text-content">文字内容</label>
                 <textarea id="text-content" rows="3"></textarea>
-                <label for="font-size">字号</label>
-                <input id="font-size" type="number" min="8" max="200" step="1" />
-                <label for="text-color">文字颜色</label>
-                <input id="text-color" type="color" />
+                <label for="font-family">字体</label>
+                <select id="font-family"></select>
+                <div class="control-pair">
+                  <span class="control-item">
+                    <label for="font-size">字号</label>
+                    <input id="font-size" type="number" min="8" max="200" step="1" />
+                  </span>
+                  <span class="control-item">
+                    <label for="font-weight">粗细</label>
+                    <select id="font-weight"></select>
+                  </span>
+                </div>
+                <div class="control-pair">
+                  <span class="control-item">
+                    <label for="text-color">文字颜色</label>
+                    <input id="text-color" type="color" />
+                  </span>
+                  <span class="control-item">
+                    <label for="letter-spacing">字间距</label>
+                    <input id="letter-spacing" type="number" min="-10" max="50" step="0.5" />
+                  </span>
+                </div>
                 <label for="line-height">行距</label>
                 <input id="line-height" type="number" min="0.8" max="3" step="0.1" />
                 <div class="alignment-group" role="group" aria-label="文字对齐">
@@ -216,6 +234,15 @@
                   <button type="button" data-align="right" aria-label="右对齐">右</button>
                 </div>
               </fieldset>
+              <div id="image-controls" class="image-controls" hidden>
+                <p>拖动改变位置，四角控制点等比例缩放；图片始终完整保留在当前幻灯片内。</p>
+                <button id="replace-image" type="button">替换图片</button>
+                <input id="image-file-input" type="file" accept="image/*" hidden />
+              </div>
+              <div id="locked-hint" class="locked-hint" hidden>
+                <strong>已锁定：这个元素不可编辑</strong>
+                <span>点击 SVG 装饰、Logo 或背景时出现，保持原样显示。</span>
+              </div>
             </aside>
           </div>
         </section>

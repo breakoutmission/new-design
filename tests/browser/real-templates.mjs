@@ -362,7 +362,7 @@ async function assertLockedPageCounter(page, editor, templateName) {
   const counter = editor.locator("[data-slide-counter]").first();
   await counter.waitFor({ state: "visible" });
   await counter.click({ force: true });
-  const locked = page.getByText("已锁定：这个元素不可编辑", { exact: true });
+  const locked = page.locator("#selection-status", { hasText: "已锁定：这个元素不可编辑" });
   assert.equal(
     await locked.isVisible(),
     true,

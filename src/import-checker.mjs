@@ -4,7 +4,8 @@
 // Issue #15 在此基础上向后兼容扩展：页面识别规则表（优先级制）、三档判定映射、
 // 锁定元素清单、动效转静态、硬性不支持原因（框架 / 脚本生成内容 / 受限嵌入）
 // 与畸形文件的明确原因。规则表正反样本见 tests/import-checker.mjs 与
-// docs/import-checker-rules.md。
+// docs/import-checker-rules.md。Issue #16 仅更新 editableContent 的用户可读
+// 能力说明（note），与编辑面板的排版与图片替换能力保持一致，字段结构不变。
 
 export const IMPORT_MAX_BYTES = 10 * 1024 * 1024;
 
@@ -425,8 +426,8 @@ function analyzeImportedHtml(processedHtml, scriptTagText) {
   );
 
   const editableContent = [
-    { category: "可编辑文字", count: countEditableText(contentScope), note: "可修改内容、字号、颜色、行距和对齐方式" },
-    { category: "可编辑图片", count: imageCount, note: "可拖动位置与四角等比例缩放" },
+    { category: "可编辑文字", count: countEditableText(contentScope), note: "可修改内容、字体、字号、颜色、粗细、行距、字间距和对齐方式" },
+    { category: "可编辑图片", count: imageCount, note: "可拖动位置、四角等比例缩放和替换图片内容" },
   ];
   return { lockedElements, editableContent };
 }
