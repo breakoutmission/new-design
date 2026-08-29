@@ -219,8 +219,9 @@ try {
   await page.locator("#import-file-input").setInputFiles(importedDeckPath);
   await page.getByRole("button", { name: "开始检查", exact: true }).click();
   await page.getByTestId("import-report").waitFor();
-  await page.getByText("识别出 4 处可编辑文字、1 张可编辑图片", { exact: true }).waitFor();
-  await page.getByRole("button", { name: "进入编辑", exact: true }).click();
+  await page.getByText("可编辑文字 4 处", { exact: true }).waitFor();
+  await page.getByText("可编辑图片 1 张", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "仍要进入编辑", exact: true }).click();
   await page.getByTestId("preview").waitFor();
   await page.getByRole("button", { name: "编辑", exact: true }).click();
   await page.getByText("编辑模式", { exact: true }).waitFor();
