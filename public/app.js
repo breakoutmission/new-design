@@ -56,6 +56,9 @@ const fontSize = document.querySelector("#font-size");
 const textColor = document.querySelector("#text-color");
 const lineHeight = document.querySelector("#line-height");
 const alignmentButtons = document.querySelectorAll("[data-align]");
+const elementActions = document.querySelector("#element-actions");
+const copyElementButton = document.querySelector("#copy-element");
+const deleteElementButton = document.querySelector("#delete-element");
 
 const TEMPLATE_COVER_CLASSES = {
   Grove: "grove",
@@ -124,6 +127,8 @@ lineHeight.addEventListener("input", () => state.editor?.updateTextStyle("line-h
 alignmentButtons.forEach((button) =>
   button.addEventListener("click", () => state.editor?.updateTextStyle("text-align", button.dataset.align)),
 );
+copyElementButton.addEventListener("click", () => state.editor?.copySelection());
+deleteElementButton.addEventListener("click", () => state.editor?.deleteSelection());
 
 importEntry.addEventListener("click", openImportDialog);
 importDropzone.addEventListener("click", () => importFileInput.click());
@@ -678,14 +683,19 @@ async function ensureEditor() {
         selectionStatus.textContent = "已选中文字";
         textControls.disabled = false;
         syncTextControls(text);
-      } else {
+      } else if (kind === "image") {
         selectionStatus.textContent = "已选中普通内容图片";
         textControls.disabled = true;
+      } else {
+        selectionStatus.textContent = "点击画布中的文字或普通内容图片";
+        textControls.disabled = true;
       }
+      elementActions.hidden = kind !== "text" && kind !== "image";
     },
     onLocked() {
       selectionStatus.textContent = "已锁定：这个元素不可编辑";
       textControls.disabled = true;
+      elementActions.hidden = true;
       showToast("这个元素不可编辑");
     },
     onHistoryChange: updateHistoryButtons,
@@ -724,6 +734,7 @@ function resetEditor() {
   state.editor = null;
   state.editorProjectId = null;
   textControls.disabled = true;
+  elementActions.hidden = true;
   updateHistoryButtons();
   updateEditorNavigation();
 }

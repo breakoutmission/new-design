@@ -1,4 +1,5 @@
 import grapesjs from "/vendor/grapesjs/grapes.mjs";
+import { copyComponentAdjacent, removeComponent } from "./element-operations.js";
 
 const EDITABLE_TEXT_SELECTOR = "[data-editable-text], h1, h2, h3, h4, h5, h6, p";
 const IMAGE_STYLE_KEYS = ["position", "left", "top", "right", "bottom", "width", "height"];
@@ -119,7 +120,25 @@ export async function mountPresentationEditor({
     if (selectedKind === "image") onSelection({ kind: "image" });
   };
 
+  const clearSelectionState = () => {
+    selectedComponent = null;
+    selectedKind = null;
+    clearSelectionOutline(frameDocument);
+    updateImageHandles();
+    onSelection({ kind: null });
+  };
+
+  const selectionIsLive = () => {
+    if (!selectedComponent || !selectedKind) return false;
+    const element = selectedComponent.getEl?.();
+    return Boolean(element) && frameDocument.contains(element);
+  };
+
   const handleSelected = (component) => {
+    if (!component) {
+      clearSelectionState();
+      return;
+    }
     const element = component.getEl();
     const editableText = element ? findEditableText(element) : null;
     const editableImage = element ? findEditableImage(element) : null;
@@ -165,9 +184,31 @@ export async function mountPresentationEditor({
   };
 
   const refreshSelection = () => {
-    markSelected();
-    notifySelection();
+    if (!selectionIsLive()) {
+      clearSelectionState();
+    } else {
+      markSelected();
+      notifySelection();
+    }
     notifyHistory();
+  };
+
+  const copySelection = () => {
+    if (!selectionIsLive()) return null;
+    const clone = copyComponentAdjacent(selectedComponent);
+    if (!clone) return null;
+    editor.select(clone);
+    notifyHistory();
+    return clone;
+  };
+
+  const deleteSelection = () => {
+    if (!selectionIsLive()) return false;
+    const target = selectedComponent;
+    clearSelectionState();
+    const removed = removeComponent(target);
+    notifyHistory();
+    return removed;
   };
 
   const undo = () => {
@@ -376,6 +417,8 @@ export async function mountPresentationEditor({
     nextSlide,
     updateTextContent,
     updateTextStyle,
+    copySelection,
+    deleteSelection,
     undo,
     redo,
     historyState,

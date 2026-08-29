@@ -858,6 +858,38 @@ textarea:focus {
   font-weight: 600;
 }
 
+.element-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.element-actions[hidden] { display: none; }
+.element-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: #fff;
+  color: #33384a;
+  font-weight: 600;
+}
+.element-actions button:hover:not(:disabled) { border-color: #111318; background: #f4f6fa; }
+.element-actions button.element-action-danger {
+  border-color: rgba(197, 82, 74, .45);
+  color: #c5524a;
+}
+.element-actions button.element-action-danger:hover:not(:disabled) {
+  border-color: #c5524a;
+  background: rgba(197, 82, 74, .07);
+}
+
 /* ---------- Dialog and toast ---------- */
 
 dialog {
