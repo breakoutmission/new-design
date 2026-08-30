@@ -7,7 +7,12 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
-import { IMPORT_MAX_BYTES, prepareImportedHtml, runImportCheck } from "./import-checker.mjs";
+import {
+  IMPORT_MAX_BYTES,
+  isSlideTokenClass,
+  prepareImportedHtml,
+  runImportCheck,
+} from "./import-checker.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publicDir = path.join(root, "public");
@@ -850,14 +855,16 @@ function prepareImportedExportHtml(html) {
 function injectStaticPaging(html, slideCount) {
   // 页码徽章在导出时写死为真实 DOM 文本（总数与 PDF 分页同源 countSlides），
   // 不依赖 CSS 计数器（getComputedStyle 不解析 counter，且各浏览器渲染有差异）。
+  // 页面判定与 countSlides 使用同一谓词（isSlideTokenClass），slide-content、
+  // slide-counter 等页内复合类名不得获得徽章（#21 真实样本修订）。
   let pageIndex = 0;
-  const withBadges = html.replace(
-    /(<[a-z][\w-]*\b[^>]*\bclass=["'][^"']*\bslide\b[^"']*["'][^>]*>)/gi,
-    (match) => {
-      pageIndex += 1;
-      return match + '<span data-product-page-badge>' + pageIndex + " / " + slideCount + "</span>";
-    },
-  );
+  const withBadges = html.replace(/<[a-z][\w-]*\b[^>]*>/gi, (tag) => {
+    const classValue =
+      tag.match(/\bclass\s*=\s*"([^"]*)"/i)?.[1] ?? tag.match(/\bclass\s*=\s*'([^']*)'/i)?.[1];
+    if (!classValue || !isSlideTokenClass(classValue)) return tag;
+    pageIndex += 1;
+    return tag + '<span data-product-page-badge>' + pageIndex + " / " + slideCount + "</span>";
+  });
   const style = [
     '<style data-product-static-paging>',
     // 翻页由纯 CSS 完成：所有页面纵向排布，视口滚动逐页吸附，无需任何脚本。
@@ -975,8 +982,10 @@ function extractCompleteHtml(input) {
 }
 
 function countSlides(html) {
+  // 页面口径与导入检查器一致（isSlideTokenClass）：完整词 slide / slide+纯数字编号，
+  // 排除 slide-content、slide-counter 等页内复合类名（#21 真实样本修订）。
   return Array.from(html.matchAll(/class=["']([^"']*)["']/gi)).filter((match) =>
-    match[1].split(/\s+/).includes("slide"),
+    isSlideTokenClass(match[1]),
   ).length;
 }
 
