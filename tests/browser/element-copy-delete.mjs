@@ -415,8 +415,9 @@ try {
   await page.getByText("复制删除锁定演示.html", { exact: true }).waitFor();
   await page.getByRole("button", { name: "开始检查", exact: true }).click();
   await page.getByTestId("import-report").waitFor();
-  await page.getByText("已创建演示项目「复制删除锁定演示」", { exact: true }).waitFor();
-  await page.getByRole("button", { name: "进入编辑", exact: true }).click();
+  await page.getByText("部分可编辑", { exact: true }).waitFor();
+  await page.getByText("将被锁定的内容", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "仍要进入编辑", exact: true }).click();
   await page.getByTestId("preview").waitFor({ timeout: 5_000 });
   await page.getByRole("button", { name: "编辑", exact: true }).click();
   await page.getByText("编辑模式", { exact: true }).waitFor();

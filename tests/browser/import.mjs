@@ -196,6 +196,29 @@ try {
   assert.ok(passBadges >= 7, "每条通过规则都应显示通过徽章");
   await page.getByText("已创建演示项目「导入验收演示」", { exact: true }).waitFor();
 
+  // 4b. 完全可编辑态对齐原型屏幕 7：检查备注、文件摘要行、查看原文件、按钮层级。
+  await page.getByText("检查完成 · 未修改原文件", { exact: true }).waitFor();
+  const greenFileMeta = await page.locator("#import-report-file-meta").textContent();
+  assert.match(greenFileMeta, /3 页/, "文件摘要必须包含识别出的页数");
+  assert.match(greenFileMeta, /1 张图片/, "文件摘要必须包含可编辑图片数量");
+  assert.match(greenFileMeta, /刚刚检查/, "文件摘要必须包含检查时间");
+  assert.equal(
+    await page.locator(".import-report-actions").getByRole("button", { name: "重新上传", exact: true }).count(),
+    0,
+    "完全可编辑档不提供重新上传入口",
+  );
+  const originalPopupPromise = page.waitForEvent("popup");
+  await page.getByRole("button", { name: "查看原文件", exact: true }).click();
+  const originalPopup = await originalPopupPromise;
+  await originalPopup.waitForLoadState();
+  assert.match(originalPopup.url(), /^blob:/, "查看原文件必须打开原始上传文件的只读视图");
+  assert.ok(
+    (await originalPopup.content()).includes("导入验收演示"),
+    "查看原文件展示的必须是原始上传内容",
+  );
+  await originalPopup.close();
+  await page.screenshot({ path: path.join(root, "output", "playwright", "import-report-green.png"), fullPage: true });
+
   // 5. 进入现有安全预览：脚本不得运行，导入项目没有「重新生成」。
   await page.getByRole("button", { name: "进入编辑", exact: true }).click();
   await page.getByTestId("preview").waitFor({ timeout: 5_000 });
@@ -271,12 +294,22 @@ try {
   await reportView.waitFor();
   assert.equal(await page.getByTestId("import-verdict").textContent(), "暂不支持");
   await page.getByText("仅支持 .html 演示文稿文件", { exact: true }).waitFor();
-  await page.getByText("未创建演示项目", { exact: true }).waitFor();
+  await page.getByText("检查完成 · 未创建项目", { exact: true }).waitFor();
+  await page.getByText("原文件未做任何修改，也没有创建演示项目。", { exact: true }).waitFor();
+  assert.equal(await page.locator("#import-rules .import-rule").count(), 1, "暂不支持态只展示原因清单");
+  assert.equal(
+    await page.locator("#import-report-view").getByText("原因", { exact: true }).count(),
+    1,
+    "每条失败原因都带原因徽章",
+  );
   assert.equal(
     await page.getByRole("button", { name: "进入编辑", exact: true }).count(),
     0,
     "暂不支持时不得提供进入编辑入口",
   );
+  await page.getByRole("button", { name: "重新上传", exact: true }).click();
+  assert.equal(await importDialog.evaluate((element) => element.open), true, "重新上传必须能再次打开上传对话框");
+  await page.getByRole("button", { name: "取消", exact: true }).click();
   await page.locator(".import-report-actions").getByRole("button", { name: "返回首页" }).click();
   await page.locator("#project-count").waitFor();
   assert.equal(await countBadge.textContent(), countBefore, "被拒绝的文件不得创建项目记录");
@@ -288,7 +321,7 @@ try {
   await reportView.waitFor();
   assert.equal(await page.getByTestId("import-verdict").textContent(), "暂不支持");
   await page.getByText("文件超过 " + IMPORT_SIZE_LIMIT_TEXT + " 大小上限", { exact: true }).waitFor();
-  await page.getByText("未创建演示项目", { exact: true }).waitFor();
+  await page.getByText("原文件未做任何修改，也没有创建演示项目。", { exact: true }).waitFor();
   await page.locator(".import-report-actions").getByRole("button", { name: "返回首页" }).click();
   await page.locator("#project-count").waitFor();
   assert.equal(await countBadge.textContent(), countBefore, "超大小上限不得创建项目记录");
@@ -300,7 +333,7 @@ try {
   await reportView.waitFor();
   assert.equal(await page.getByTestId("import-verdict").textContent(), "暂不支持");
   await page.getByText("无法识别演示页面", { exact: true }).waitFor();
-  await page.getByText("未创建演示项目", { exact: true }).waitFor();
+  await page.getByText("原文件未做任何修改，也没有创建演示项目。", { exact: true }).waitFor();
   await page.locator(".import-report-actions").getByRole("button", { name: "返回首页" }).click();
   await page.locator("#project-count").waitFor();
   assert.equal(await countBadge.textContent(), countBefore, "无法识别页面不得创建项目记录");
@@ -314,14 +347,32 @@ try {
   const partialPill = page.getByTestId("import-verdict");
   assert.equal(await partialPill.textContent(), "部分可编辑");
   assert.match((await partialPill.getAttribute("class")) || "", /is-partial/);
-  await page.getByText("锁定元素清单", { exact: true }).waitFor();
-  await page
-    .getByText("SVG 装饰图形 1 处、背景渐变 1 处、页眉 Logo 1 处保持原样显示，不可编辑", { exact: true })
-    .waitFor();
-  const lockBadges = await page.getByText("锁定", { exact: true }).count();
-  assert.ok(lockBadges >= 1, "锁定内容规则应显示锁定徽章");
-  await page.getByText("已创建演示项目「部分可编辑演示」", { exact: true }).waitFor();
-  await page.screenshot({ path: path.join(root, "output", "playwright", "import-partial.png"), fullPage: true });
+  await page.getByText("检查完成 · 未修改原文件", { exact: true }).waitFor();
+  // 部分可编辑态对齐原型屏幕 8：可编辑内容与将被锁定的内容两组分类卡。
+  await page.getByText("可编辑内容", { exact: true }).waitFor();
+  assert.equal(await page.locator("#import-editable-count").textContent(), "1 类");
+  await page.getByText("可编辑文字 4 处", { exact: true }).waitFor();
+  await page.getByText("将被锁定的内容", { exact: true }).waitFor();
+  assert.equal(await page.locator("#import-locked-count").textContent(), "3 类");
+  await page.getByText("SVG 装饰图形 1 处", { exact: true }).waitFor();
+  await page.getByText("背景渐变 1 处", { exact: true }).waitFor();
+  await page.getByText("页眉 Logo 1 处", { exact: true }).waitFor();
+  await page.getByText("第一版不编辑矢量图形，保持原样显示", { exact: true }).waitFor();
+  const lockBadges = await page.locator("#import-report-view").getByText("锁定", { exact: true }).count();
+  assert.equal(lockBadges, 3, "每个锁定类别都显示锁定徽章");
+  assert.equal(
+    await page.locator("#import-report-view").getByText("可编辑", { exact: true }).count(),
+    1,
+    "展示的可编辑类别显示可编辑徽章",
+  );
+  await page.getByText("锁定内容在编辑画布中点击时会提示「已锁定：这个元素不可编辑」", { exact: true }).waitFor();
+  assert.equal(
+    await page.locator(".import-report-actions").getByRole("button", { name: "返回首页", exact: true }).count(),
+    0,
+    "部分可编辑档按原型只提供重新上传与仍要进入编辑",
+  );
+  await page.getByRole("button", { name: "重新上传", exact: true }).waitFor();
+  await page.screenshot({ path: path.join(root, "output", "playwright", "import-report-partial.png"), fullPage: true });
 
   const partialRecord = await fetch(baseUrl + "/api/projects")
     .then((response) => response.json())
@@ -341,8 +392,16 @@ try {
   for (const item of lockedInventory) {
     assert.ok(typeof item.reason === "string" && item.reason.length > 0, "每个锁定类别必须有原因");
   }
+  const editableRowNote = await page
+    .locator("#import-editable-list .import-rule small")
+    .first()
+    .textContent();
+  assert.ok(
+    (partialRecord.importReport.editableContent || []).some((item) => item.note === editableRowNote),
+    "可编辑内容行的说明必须来自报告的 editableContent 数据",
+  );
 
-  await page.getByRole("button", { name: "进入编辑", exact: true }).click();
+  await page.getByRole("button", { name: "仍要进入编辑", exact: true }).click();
   await page.getByTestId("preview").waitFor({ timeout: 5_000 });
   await page.getByRole("button", { name: "编辑", exact: true }).click();
   await page.getByText("编辑模式", { exact: true }).waitFor();
@@ -379,16 +438,38 @@ try {
   assert.equal(await page.getByTestId("import-verdict").textContent(), "暂不支持");
   await page.getByText("检测到 React 框架", { exact: true }).waitFor();
   await page.getByText("页面内容由脚本动态生成", { exact: true }).waitFor();
-  await page.getByText("未创建演示项目", { exact: true }).waitFor();
+  await page.getByText("检查完成 · 未创建项目", { exact: true }).waitFor();
+  await page.getByText("原文件未做任何修改，也没有创建演示项目。", { exact: true }).waitFor();
+  assert.equal(await page.locator("#import-rules .import-rule").count(), 2, "并列失败原因都出现在原因清单");
+  assert.equal(
+    await page.locator("#import-report-view").getByText("原因", { exact: true }).count(),
+    2,
+    "每条失败原因都带原因徽章",
+  );
   assert.equal(
     await page.getByRole("button", { name: "进入编辑", exact: true }).count(),
     0,
     "暂不支持时不得提供进入编辑入口",
   );
   assert.equal(await countBadge.textContent(), countAfterPartial, "React 样本不得创建项目记录");
-  await page.screenshot({ path: path.join(root, "output", "playwright", "import-react.png"), fullPage: true });
+  await page.screenshot({ path: path.join(root, "output", "playwright", "import-report-unsupported.png"), fullPage: true });
 
-  await page.screenshot({ path: path.join(root, "output", "playwright", "import-green.png"), fullPage: true });
+  // 13. 暂不支持档的「重新上传」走完整重传路径并创建新项目。
+  await page.getByRole("button", { name: "重新上传", exact: true }).click();
+  assert.equal(await importDialog.evaluate((element) => element.open), true, "重新上传必须能再次打开上传对话框");
+  await page.locator("#import-file-input").setInputFiles(partialDeckPath);
+  await page.getByText("部分可编辑演示.html", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "开始检查", exact: true }).click();
+  await page.locator("#import-report-view").getByText("部分可编辑", { exact: true }).waitFor();
+  assert.equal(await page.getByTestId("import-verdict").textContent(), "部分可编辑");
+  await page.getByText("将被锁定的内容", { exact: true }).waitFor();
+  await page.locator("#import-report-view .back-button").click();
+  await page.getByRole("article", { name: "部分可编辑演示" }).first().waitFor();
+  assert.equal(
+    await page.getByRole("article", { name: "部分可编辑演示" }).count(),
+    2,
+    "重新上传通过检查后应创建新的部分可编辑项目",
+  );
   console.log("PASS: import demo minimal flow works through the public UI");
 } catch (error) {
   const enrichedMessage =

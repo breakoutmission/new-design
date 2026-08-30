@@ -17,6 +17,7 @@ const state = {
   editorProjectId: null,
   activeGeneration: null,
   pendingImportFile: null,
+  reportedImportFile: null,
 };
 
 const views = {
@@ -109,10 +110,21 @@ const importStartButton = document.querySelector("#import-start");
 const importOpenProjectButton = document.querySelector("#import-open-project");
 const importVerdict = document.querySelector("#import-verdict");
 const importReportTitle = document.querySelector("#import-report-title");
+const importReportNote = document.querySelector("#import-report-note");
 const importReportFileName = document.querySelector("#import-report-file-name");
 const importReportFileMeta = document.querySelector("#import-report-file-meta");
+const importViewOriginalButton = document.querySelector("#import-view-original");
 const importRules = document.querySelector("#import-rules");
+const importContentGroups = document.querySelector("#import-content-groups");
+const importEditableGroup = document.querySelector("#import-editable-group");
+const importEditableCount = document.querySelector("#import-editable-count");
+const importEditableList = document.querySelector("#import-editable-list");
+const importLockedGroup = document.querySelector("#import-locked-group");
+const importLockedCount = document.querySelector("#import-locked-count");
+const importLockedList = document.querySelector("#import-locked-list");
 const importReportStatus = document.querySelector("#import-report-status");
+const importHomeAction = document.querySelector("#import-home-action");
+const importReuploadButton = document.querySelector("#import-reupload");
 
 document.querySelector("#new-project").addEventListener("click", () => showView("new"));
 document
@@ -172,6 +184,8 @@ importOpenProjectButton.addEventListener("click", () => {
   const projectId = importOpenProjectButton.dataset.projectId;
   if (projectId) void openProject(projectId);
 });
+importReuploadButton.addEventListener("click", openImportDialog);
+importViewOriginalButton.addEventListener("click", viewOriginalImportFile);
 ["dragenter", "dragover"].forEach((type) =>
   importDropzone.addEventListener(type, (event) => {
     event.preventDefault();
@@ -197,6 +211,19 @@ function openImportDialog() {
 
 function closeImportDialog() {
   if (importDialog.open) importDialog.close();
+  syncViewOriginalVisibility();
+}
+
+function syncViewOriginalVisibility() {
+  importViewOriginalButton.hidden = !state.reportedImportFile;
+}
+
+function viewOriginalImportFile() {
+  const file = state.reportedImportFile;
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  window.open(url, "_blank");
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 function setPendingImportFile(file) {
@@ -244,6 +271,8 @@ async function startImport() {
 const RULE_STATE_CLASSES = { pass: "is-pass", warn: "is-warn", fail: "is-fail" };
 const RULE_STATE_MARKS = { pass: "✓", warn: "!", fail: "×" };
 const RULE_STATE_BADGES = { pass: "通过", warn: "锁定", fail: "未通过" };
+const LOCK_MARK_SVG =
+  '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>';
 
 function ruleStateOf(status) {
   return status === "pass" || status === "warn" ? status : "fail";
@@ -251,45 +280,138 @@ function ruleStateOf(status) {
 
 function showImportReport(report, project) {
   const displayName = String(report.file?.name || "导入演示").replace(/\.html?$/i, "");
+  const unsupported = report.verdict === "暂不支持";
+  const partial = report.verdict === "部分可编辑";
+  state.reportedImportFile = state.pendingImportFile;
   importReportTitle.textContent = displayName;
   importVerdict.textContent = report.verdict;
   importVerdict.className = "verdict-pill " + (VERDICT_CLASSES[report.verdict] || "");
+  importReportNote.textContent = unsupported ? "检查完成 · 未创建项目" : "检查完成 · 未修改原文件";
   importReportFileName.textContent = report.file?.name || "";
-  importReportFileMeta.textContent =
-    formatFileSize(report.file?.size || 0) + (report.slideCount ? " · " + report.slideCount + " 页" : "");
-  importRules.replaceChildren(
-    ...report.rules.map((rule) => {
-      const item = document.createElement("li");
-      item.className = "import-rule";
-      const ruleState = ruleStateOf(rule.status);
-      const stateClass = RULE_STATE_CLASSES[ruleState];
-      item.innerHTML =
-        '<span class="rule-mark ' +
-        stateClass +
-        '" aria-hidden="true">' +
-        RULE_STATE_MARKS[ruleState] +
-        '</span><div class="rule-copy"><strong>' +
-        escapeHtml(rule.title) +
-        "</strong><small>" +
-        escapeHtml(rule.detail || "") +
-        '</small></div><span class="rule-badge ' +
-        stateClass +
-        '">' +
-        RULE_STATE_BADGES[ruleState] +
-        "</span>";
-      return item;
-    }),
-  );
-  if (project) {
-    importReportStatus.textContent = "已创建演示项目「" + project.name + "」";
-    importOpenProjectButton.hidden = false;
-    importOpenProjectButton.dataset.projectId = project.id;
+  importReportFileMeta.textContent = importFileMetaText(report);
+  syncViewOriginalVisibility();
+  renderImportRuleList(report, unsupported, partial);
+  renderImportContentGroups(report, partial);
+  if (unsupported) {
+    importReportStatus.textContent = "原文件未做任何修改，也没有创建演示项目。";
+    importReportStatus.className = "import-report-status is-plain";
+    importHomeAction.hidden = false;
+    importReuploadButton.hidden = false;
+    importReuploadButton.className = "button-dark";
+    setImportOpenProject(null);
+  } else if (partial) {
+    importReportStatus.textContent = "锁定内容在编辑画布中点击时会提示「已锁定：这个元素不可编辑」";
+    importReportStatus.className = "import-report-status is-warn";
+    importHomeAction.hidden = true;
+    importReuploadButton.hidden = false;
+    importReuploadButton.className = "text-button";
+    setImportOpenProject(project, "仍要进入编辑");
   } else {
-    importReportStatus.textContent = "未创建演示项目";
-    importOpenProjectButton.hidden = true;
-    delete importOpenProjectButton.dataset.projectId;
+    importReportStatus.textContent = "已创建演示项目「" + project.name + "」";
+    importReportStatus.className = "import-report-status";
+    importHomeAction.hidden = false;
+    importReuploadButton.hidden = true;
+    setImportOpenProject(project, "进入编辑");
   }
   showView("import-report");
+}
+
+function setImportOpenProject(project, label) {
+  if (!project) {
+    importOpenProjectButton.hidden = true;
+    delete importOpenProjectButton.dataset.projectId;
+    return;
+  }
+  importOpenProjectButton.hidden = false;
+  importOpenProjectButton.textContent = label;
+  importOpenProjectButton.dataset.projectId = project.id;
+}
+
+function renderImportRuleList(report, unsupported, partial) {
+  if (partial) {
+    importRules.hidden = true;
+    importRules.replaceChildren();
+    return;
+  }
+  const rules = unsupported ? report.rules.filter((rule) => rule.status === "fail") : report.rules;
+  importRules.hidden = false;
+  importRules.replaceChildren(...rules.map((rule) => importRuleItem(rule, unsupported)));
+}
+
+function importRuleItem(rule, failedRulesAreReasons) {
+  const ruleState = ruleStateOf(rule.status);
+  const stateClass = RULE_STATE_CLASSES[ruleState];
+  return importRuleRow({
+    markClass: stateClass,
+    markContent: RULE_STATE_MARKS[ruleState],
+    title: rule.title,
+    detail: rule.detail,
+    badgeClass: stateClass,
+    badgeText: ruleState === "fail" && failedRulesAreReasons ? "原因" : RULE_STATE_BADGES[ruleState],
+  });
+}
+
+function renderImportContentGroups(report, partial) {
+  importContentGroups.hidden = !partial;
+  if (!partial) return;
+  const editableRows = (report.editableContent || []).filter((item) => Number(item.count) > 0);
+  importEditableGroup.hidden = editableRows.length === 0;
+  importEditableCount.textContent = editableRows.length + " 类";
+  importEditableList.replaceChildren(...editableRows.map((item) => inventoryItem(item, "editable")));
+  const lockedRows = report.lockedElements || [];
+  importLockedGroup.hidden = lockedRows.length === 0;
+  importLockedCount.textContent = lockedRows.length + " 类";
+  importLockedList.replaceChildren(...lockedRows.map((item) => inventoryItem(item, "lock")));
+}
+
+function inventoryItem(item, kind) {
+  const editable = kind === "editable";
+  return importRuleRow({
+    markClass: editable ? "is-pass" : "is-lock",
+    markContent: editable ? "✓" : LOCK_MARK_SVG,
+    title: item.category + " " + Number(item.count) + " " + (editable && item.category === "可编辑图片" ? "张" : "处"),
+    detail: editable ? item.note : item.reason,
+    badgeClass: editable ? "is-pass" : "is-lock",
+    badgeText: editable ? "可编辑" : "锁定",
+  });
+}
+
+function importRuleRow({ markClass, markContent, title, detail, badgeClass, badgeText }) {
+  const item = document.createElement("li");
+  item.className = "import-rule";
+  item.innerHTML =
+    '<span class="rule-mark ' +
+    markClass +
+    '" aria-hidden="true">' +
+    markContent +
+    '</span><div class="rule-copy"><strong>' +
+    escapeHtml(title) +
+    "</strong><small>" +
+    escapeHtml(detail || "") +
+    '</small></div><span class="rule-badge ' +
+    badgeClass +
+    '">' +
+    badgeText +
+    "</span>";
+  return item;
+}
+
+function importFileMetaText(report) {
+  const parts = [formatFileSize(report.file?.size || 0)];
+  if (report.slideCount) parts.push(Number(report.slideCount) + " 页");
+  const imageRow = (report.editableContent || []).find((item) => item.category === "可编辑图片");
+  if (imageRow && Number(imageRow.count) > 0) parts.push(Number(imageRow.count) + " 张图片");
+  parts.push(checkedAtText(report.checkedAt));
+  return parts.join(" · ");
+}
+
+function checkedAtText(value) {
+  const checkedAt = new Date(value);
+  if (Number.isNaN(checkedAt.getTime())) return "刚刚检查";
+  const minutes = Math.floor((Date.now() - checkedAt.getTime()) / 60000);
+  if (minutes < 1) return "刚刚检查";
+  if (minutes < 60) return minutes + " 分钟前检查";
+  return new Intl.DateTimeFormat("zh-CN", { dateStyle: "short", timeStyle: "short" }).format(checkedAt) + " 检查";
 }
 
 function formatFileSize(size) {
