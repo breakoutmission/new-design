@@ -7,6 +7,12 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
+import {
+  IMPORT_MAX_BYTES,
+  isSlideTokenClass,
+  prepareImportedHtml,
+  runImportCheck,
+} from "./import-checker.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publicDir = path.join(root, "public");
@@ -20,6 +26,7 @@ const dataDir = path.resolve(
   readArg("--data-dir") || process.env.AI_PRESENTATION_DATA_DIR || path.join(root, ".app-data"),
 );
 const projectsDir = path.join(dataDir, "projects");
+const originalsDir = path.join(dataDir, "originals");
 const generatorMode = args.includes("--fixture")
   ? "fixture"
   : process.env.AI_PRESENTATION_GENERATOR || "codex";
@@ -124,6 +131,11 @@ app.delete("/api/projects/:id", async (req, res, next) => {
     }
 
     await unlink(projectPath(project.id));
+    if (project.sourceType === "imported" && project.originalFile) {
+      await unlink(path.join(dataDir, project.originalFile)).catch(() => {
+        // 原始副本缺失不阻塞项目删除。
+      });
+    }
     res.status(204).end();
   } catch (error) {
     next(error);
@@ -131,6 +143,77 @@ app.delete("/api/projects/:id", async (req, res, next) => {
     releaseProjectOperation(req.params.id, operation);
   }
 });
+
+const importRawHandler = express.raw({
+  type: ["text/html", "application/xhtml+xml"],
+  limit: IMPORT_MAX_BYTES,
+});
+
+app.post("/api/imports", (req, res, next) => {
+  const fileName = String(req.query.filename || "").trim();
+  if (!fileName) {
+    res.status(400).json({ error: "上传请求缺少文件名。" });
+    return;
+  }
+  const declaredLength = Number(req.headers["content-length"] || 0);
+  if (declaredLength > IMPORT_MAX_BYTES) {
+    req.resume();
+    const { report } = runImportCheck({ fileName, fileSize: declaredLength, html: null });
+    res.status(422).json({ error: "这份文件暂时无法导入。", report });
+    return;
+  }
+
+  importRawHandler(req, res, (error) => {
+    if (error) {
+      next(error);
+      return;
+    }
+    void importUpload({ req, res, fileName }).catch(next);
+  });
+});
+
+async function importUpload({ req, res, fileName }) {
+  const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.from([]);
+  const { verdict, passed, report, html } = runImportCheck({
+    fileName,
+    fileSize: bytes.length,
+    html: bytes.toString("utf8"),
+  });
+  if (!passed) {
+    res.status(422).json({ error: "这份文件暂时无法导入。", report });
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const id = randomUUID();
+  const project = {
+    id,
+    name: deriveImportedName(fileName),
+    source: "",
+    templateId: null,
+    templateName: "导入",
+    status: "可编辑",
+    createdAt: now,
+    updatedAt: now,
+    html,
+    report: null,
+    generation: null,
+    sourceType: "imported",
+    originalFileName: fileName,
+    originalFile: "originals/" + id + ".html",
+    importReport: report,
+    verdict,
+  };
+  await mkdir(originalsDir, { recursive: true });
+  await writeFile(path.join(dataDir, "originals", id + ".html"), bytes);
+  await writeProject(project);
+  res.status(200).json({ project });
+}
+
+function deriveImportedName(fileName) {
+  const base = String(fileName).replace(/\.html?$/i, "").trim();
+  return (base || "导入演示").slice(0, 80);
+}
 
 app.patch("/api/projects/:id", async (req, res, next) => {
   const operation = { type: "save" };
@@ -153,9 +236,14 @@ app.patch("/api/projects/:id", async (req, res, next) => {
       return;
     }
 
-    const prepared = preparePreviewHtml(html, project.templateId);
-    project.html = prepared.html;
-    project.report = prepared.report;
+    if (project.sourceType === "imported") {
+      project.html = prepareImportedPreviewHtml(html);
+      project.report = null;
+    } else {
+      const prepared = preparePreviewHtml(html, project.templateId);
+      project.html = prepared.html;
+      project.report = prepared.report;
+    }
     project.projectData = projectData;
     project.status = "可编辑";
     project.updatedAt = new Date().toISOString();
@@ -185,7 +273,10 @@ app.post("/api/projects/:id/exports/html", async (req, res, next) => {
       return;
     }
 
-    const html = prepareSelfContainedHtml(project.html);
+    const html =
+      project.sourceType === "imported"
+        ? prepareImportedExportHtml(project.html)
+        : prepareSelfContainedHtml(project.html);
     const fileName = project.name + ".html";
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encodeURIComponent(fileName));
@@ -299,6 +390,11 @@ app.post("/api/projects/:id/generations", async (req, res) => {
       res.status(404).json({ error: "没有找到这个演示项目。" });
       return;
     }
+    if (project.sourceType === "imported") {
+      releaseGenerationTask(task);
+      res.status(409).json({ error: "导入的演示项目没有源材料，不能重新生成。" });
+      return;
+    }
     if (!["可编辑", "生成失败", "已取消"].includes(project.status)) {
       releaseGenerationTask(task);
       res.status(409).json({ error: "这个项目当前不能重新生成。" });
@@ -349,7 +445,14 @@ app.post("/api/generations/:id/cancel", async (req, res, next) => {
 
 app.use((error, _req, res, _next) => {
   console.error(error);
-  if (!res.headersSent) res.status(500).json({ error: userFacingError(error) });
+  if (!res.headersSent) {
+    const status = Number(error.statusCode || error.status || 500);
+    const message =
+      status === 413
+        ? "文件超过 " + Math.round(IMPORT_MAX_BYTES / (1024 * 1024)) + " MB 大小上限。"
+        : userFacingError(error);
+    res.status(status).json({ error: message });
+  }
 });
 
 app.get("*path", (_req, res) => {
@@ -393,7 +496,9 @@ async function writeProject(project) {
 async function readProject(id) {
   const file = projectPath(id);
   if (!existsSync(file)) return null;
-  return JSON.parse(await readFile(file, "utf8"));
+  const project = JSON.parse(await readFile(file, "utf8"));
+  if (!project.sourceType) project.sourceType = "generated";
+  return project;
 }
 
 async function listProjects() {
@@ -403,15 +508,16 @@ async function listProjects() {
     files.map((file) => readFile(path.join(projectsDir, file), "utf8").then(JSON.parse)),
   );
   return projects
-    .map(
-      ({
+    .map((project) => {
+      const {
         html: _html,
         source: _source,
         generation: _generation,
         projectData: _projectData,
         ...summary
-      }) => summary,
-    )
+      } = project;
+      return { sourceType: project.sourceType || "generated", ...summary };
+    })
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
@@ -628,21 +734,26 @@ function generateWithFixture(source, attempt, task, templateId) {
   });
 }
 
-function preparePreviewHtml(input, templateId) {
-  let html = normalizePageCounter(normalizeTemplateImage(extractCompleteHtml(input)), templateId);
-  const forbidden = [
-    [/file:\/\//i, "HTML 包含本地文件地址。"],
-    [/<form\b/i, "HTML 包含表单。"],
-    [/<script\b[^>]*\bsrc\s*=/i, "HTML 包含外部脚本。"],
-    [/<base\b/i, "HTML 试图改变页面地址基础。"],
-    [/\b(?:fetch|XMLHttpRequest|WebSocket|EventSource)\s*\(/i, "HTML 包含外部数据请求。"],
-    [/navigator\.sendBeacon\s*\(/i, "HTML 包含外部数据发送。"],
-    [/window\.open\s*\(/i, "HTML 试图打开新窗口。"],
-    [/<a\b[^>]*\bdownload(?:\s|=|>)/i, "HTML 包含下载操作。"],
-  ];
-  for (const [pattern, message] of forbidden) {
+const FORBIDDEN_HTML_PATTERNS = [
+  [/file:\/\//i, "HTML 包含本地文件地址。"],
+  [/<form\b/i, "HTML 包含表单。"],
+  [/<script\b[^>]*\bsrc\s*=/i, "HTML 包含外部脚本。"],
+  [/<base\b/i, "HTML 试图改变页面地址基础。"],
+  [/\b(?:fetch|XMLHttpRequest|WebSocket|EventSource)\s*\(/i, "HTML 包含外部数据请求。"],
+  [/navigator\.sendBeacon\s*\(/i, "HTML 包含外部数据发送。"],
+  [/window\.open\s*\(/i, "HTML 试图打开新窗口。"],
+  [/<a\b[^>]*\bdownload(?:\s|=|>)/i, "HTML 包含下载操作。"],
+];
+
+function assertNoForbiddenPatterns(html) {
+  for (const [pattern, message] of FORBIDDEN_HTML_PATTERNS) {
     if (pattern.test(html)) throw new Error(message);
   }
+}
+
+function preparePreviewHtml(input, templateId) {
+  let html = normalizePageCounter(normalizeTemplateImage(extractCompleteHtml(input)), templateId);
+  assertNoForbiddenPatterns(html);
 
   const editableImages = Array.from(
     html.matchAll(/<img\b[^>]*\bdata-editable-image(?=[\s=>])[^>]*>/gi),
@@ -687,6 +798,91 @@ function preparePreviewHtml(input, templateId) {
     html,
     report: { slideCount, editableImageCount, localFileUrls: 0, sandbox: "allow-scripts" },
   };
+}
+
+// 导入项目的保存准备：不做模板专用处理（页码/可编辑图片注入），
+// 只做完整性与安全禁令校验后重新安全化（脚本/内联事件移除 + 导入 CSP）。
+function prepareImportedPreviewHtml(html) {
+  if (!/<!doctype html>/i.test(html) || !/<html[\s>]/i.test(html) || !/<\/html>/i.test(html)) {
+    throw new Error("保存内容不是完整的 HTML。");
+  }
+  assertNoForbiddenPatterns(html);
+  return prepareImportedHtml(html).html;
+}
+
+// ---------------------------------------------------------------------------
+// 导入项目的 HTML 导出准备（ADR-0013 导出放宽，Issue #19）：仅 https 图片引用
+// 允许保留——<img> 的 src/srcset 与 CSS url() 引用的远程图片/字体，与导出文件
+// 自带的导入 CSP（img-src/font-src https:）一致；外部样式表 link 仍剥离，
+// 其余元素上的 http(s) 引用、@import、javascript: 地址一律拒绝。
+// file:// 与任何脚本绝对禁止（assertNoForbiddenPatterns + 二次安全化）。
+// 最后注入产品提供的静态翻页片段（纯 CSS 逐页吸附 + 写死的 DOM 页码徽章）：
+// 导入副本无脚本，导出成果离线打开即可逐页翻阅；先剥离旧片段保证重复导出幂等。
+// ---------------------------------------------------------------------------
+
+const IMPORT_EXPORT_REJECTED_PATTERNS = [
+  /<(?:source|video|audio|track|iframe|embed|object|use)\b[^>]*\b(?:src|srcset|poster|data|href)=["']https?:\/\//i,
+  /<img\b[^>]*\b(?:src|srcset)=["'][^"']*http:\/\//i,
+  /@import\s+(?:url\()?\s*["']?https?:\/\//i,
+  /url\(\s*["']?http:\/\//i,
+  /(?:href|src)\s*=\s*["']\s*javascript:/i,
+];
+
+const PRODUCT_STATIC_PAGING_STYLE_PATTERN = /<style data-product-static-paging>[\s\S]*?<\/style\s*>/gi;
+const PRODUCT_PAGE_BADGE_PATTERN = /<span data-product-page-badge>[\s\S]*?<\/span\s*>/gi;
+
+function prepareImportedExportHtml(html) {
+  if (!/<!doctype html>/i.test(html) || !/<html[\s>]/i.test(html) || !/<\/html>/i.test(html)) {
+    throw new Error("导出内容不是完整的 HTML。");
+  }
+  assertNoForbiddenPatterns(html);
+  // 二次安全化（幂等）：即使项目记录未经保存接口被改动，导出也不带脚本与内联事件。
+  const clean = prepareImportedHtml(html).html;
+  const relaxed = clean
+    .replace(/<link\b(?=[^>]*\bhref=["']https?:\/\/)[^>]*>\s*/gi, "")
+    .replace(PRODUCT_STATIC_PAGING_STYLE_PATTERN, "")
+    .replace(PRODUCT_PAGE_BADGE_PATTERN, "");
+  if (IMPORT_EXPORT_REJECTED_PATTERNS.some((pattern) => pattern.test(relaxed))) {
+    throw new Error("导出失败：演示包含不允许保留的外部资源，只有 https 图片链接可以保留。");
+  }
+  const slideCount = countSlides(relaxed);
+  if (slideCount < 1) {
+    throw new Error("导出失败：演示没有可翻阅的页面。");
+  }
+  return injectStaticPaging(relaxed, slideCount);
+}
+
+function injectStaticPaging(html, slideCount) {
+  // 页码徽章在导出时写死为真实 DOM 文本（总数与 PDF 分页同源 countSlides），
+  // 不依赖 CSS 计数器（getComputedStyle 不解析 counter，且各浏览器渲染有差异）。
+  // 页面判定与 countSlides 使用同一谓词（isSlideTokenClass），slide-content、
+  // slide-counter 等页内复合类名不得获得徽章（#21 真实样本修订）。
+  let pageIndex = 0;
+  const withBadges = html.replace(/<[a-z][\w-]*\b[^>]*>/gi, (tag) => {
+    const classValue =
+      tag.match(/\bclass\s*=\s*"([^"]*)"/i)?.[1] ?? tag.match(/\bclass\s*=\s*'([^']*)'/i)?.[1];
+    if (!classValue || !isSlideTokenClass(classValue)) return tag;
+    pageIndex += 1;
+    return tag + '<span data-product-page-badge>' + pageIndex + " / " + slideCount + "</span>";
+  });
+  const style = [
+    '<style data-product-static-paging>',
+    // 翻页由纯 CSS 完成：所有页面纵向排布，视口滚动逐页吸附，无需任何脚本。
+    "html{scroll-snap-type:y mandatory!important}",
+    "html,body{margin:0!important;padding:0!important;width:100%!important;height:auto!important;min-height:0!important;max-height:none!important;overflow:visible!important}",
+    "#deck,.deck,.stage,.slides,#slides{position:static!important;inset:auto!important;display:block!important;width:100%!important;height:auto!important;min-height:0!important;max-height:none!important;overflow:visible!important;transform:none!important;transition:none!important}",
+    "*:has(> .slide){position:static!important;inset:auto!important;display:block!important;width:100%!important;height:auto!important;min-height:0!important;max-height:none!important;overflow:visible!important;transform:none!important;transition:none!important}",
+    "nav{display:none!important}",
+    ".slide{position:relative!important;inset:auto!important;top:auto!important;right:auto!important;bottom:auto!important;left:auto!important;display:block!important;box-sizing:border-box!important;width:100vw!important;height:100vh!important;min-height:100vh!important;max-height:100vh!important;overflow:hidden!important;opacity:1!important;visibility:visible!important;pointer-events:auto!important;transform:none!important;transition:none!important;animation:none!important;float:none!important;scroll-snap-align:start!important;scroll-snap-stop:always!important}",
+    "[data-anim]{opacity:1!important;visibility:visible!important;transform:none!important;clip-path:none!important}",
+    "*{animation-delay:0s!important;animation-duration:0s!important;transition:none!important}",
+    '[data-product-page-badge]{position:absolute!important;right:24px!important;bottom:18px!important;z-index:9999!important;padding:8px 12px!important;border-radius:999px!important;color:#f7f4e8!important;background:rgba(20,35,24,.86)!important;font:600 13px/1 monospace!important;letter-spacing:.06em!important}',
+    "</style>",
+  ].join("");
+  const styled = /<\/head>/i.test(withBadges)
+    ? withBadges.replace(/<\/head>/i, style + "</head>")
+    : withBadges.replace(/<\/html>/i, style + "</body></html>");
+  return styled;
 }
 
 function normalizePageCounter(html, templateId) {
@@ -786,8 +982,10 @@ function extractCompleteHtml(input) {
 }
 
 function countSlides(html) {
+  // 页面口径与导入检查器一致（isSlideTokenClass）：完整词 slide / slide+纯数字编号，
+  // 排除 slide-content、slide-counter 等页内复合类名（#21 真实样本修订）。
   return Array.from(html.matchAll(/class=["']([^"']*)["']/gi)).filter((match) =>
-    match[1].split(/\s+/).includes("slide"),
+    isSlideTokenClass(match[1]),
   ).length;
 }
 

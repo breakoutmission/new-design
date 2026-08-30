@@ -1,4 +1,11 @@
 import { mountPresentationEditor } from "./editor.js";
+import {
+  FONT_OPTIONS,
+  FONT_WEIGHT_OPTIONS,
+  matchFontFamilyOption,
+  matchFontWeightOption,
+  readLocalImageAsDataUrl,
+} from "./editor-controls.js";
 const state = {
   templates: [],
   projects: [],
@@ -9,12 +16,15 @@ const state = {
   editor: null,
   editorProjectId: null,
   activeGeneration: null,
+  pendingImportFile: null,
+  reportedImportFile: null,
 };
 
 const views = {
   home: document.querySelector("#home-view"),
   new: document.querySelector("#new-view"),
   preview: document.querySelector("#preview-view"),
+  "import-report": document.querySelector("#import-report-view"),
 };
 
 const source = document.querySelector("#source");
@@ -50,12 +60,76 @@ const exportPdfButton = document.querySelector("#export-pdf");
 const exportStatus = document.querySelector("#export-status");
 const textControls = document.querySelector("#text-controls");
 const textContent = document.querySelector("#text-content");
+const fontFamily = document.querySelector("#font-family");
 const fontSize = document.querySelector("#font-size");
+const fontWeight = document.querySelector("#font-weight");
 const textColor = document.querySelector("#text-color");
+const letterSpacing = document.querySelector("#letter-spacing");
 const lineHeight = document.querySelector("#line-height");
 const alignmentButtons = document.querySelectorAll("[data-align]");
+const imageControls = document.querySelector("#image-controls");
+const replaceImageButton = document.querySelector("#replace-image");
+const imageFileInput = document.querySelector("#image-file-input");
+const lockedHint = document.querySelector("#locked-hint");
+const elementActions = document.querySelector("#element-actions");
+const copyElementButton = document.querySelector("#copy-element");
+const deleteElementButton = document.querySelector("#delete-element");
+
+const TEMPLATE_COVER_CLASSES = {
+  Grove: "grove",
+  "Blue Professional": "blue-professional",
+  "Biennale Yellow": "biennale-yellow",
+  "Cobalt Grid": "cobalt-grid",
+  Studio: "studio",
+};
+
+const STATUS_CLASSES = {
+  生成中: "running",
+  可编辑: "ready",
+  生成失败: "failed",
+  已取消: "canceled",
+};
+
+const VERDICT_CLASSES = {
+  完全可编辑: "is-full",
+  部分可编辑: "is-partial",
+  暂不支持: "is-unsupported",
+};
+
+const importEntry = document.querySelector("#import-demo");
+const importDialog = document.querySelector("#import-dialog");
+const importDropzone = document.querySelector("#import-dropzone");
+const importFileInput = document.querySelector("#import-file-input");
+const importFileRow = document.querySelector("#import-file-row");
+const importFileName = document.querySelector("#import-file-name");
+const importFileMeta = document.querySelector("#import-file-meta");
+const importFileRemove = document.querySelector("#import-file-remove");
+const importCloseButton = document.querySelector("#import-close");
+const importCancelButton = document.querySelector("#import-cancel");
+const importStartButton = document.querySelector("#import-start");
+const importOpenProjectButton = document.querySelector("#import-open-project");
+const importVerdict = document.querySelector("#import-verdict");
+const importReportTitle = document.querySelector("#import-report-title");
+const importReportNote = document.querySelector("#import-report-note");
+const importReportFileName = document.querySelector("#import-report-file-name");
+const importReportFileMeta = document.querySelector("#import-report-file-meta");
+const importViewOriginalButton = document.querySelector("#import-view-original");
+const importRules = document.querySelector("#import-rules");
+const importContentGroups = document.querySelector("#import-content-groups");
+const importEditableGroup = document.querySelector("#import-editable-group");
+const importEditableCount = document.querySelector("#import-editable-count");
+const importEditableList = document.querySelector("#import-editable-list");
+const importLockedGroup = document.querySelector("#import-locked-group");
+const importLockedCount = document.querySelector("#import-locked-count");
+const importLockedList = document.querySelector("#import-locked-list");
+const importReportStatus = document.querySelector("#import-report-status");
+const importHomeAction = document.querySelector("#import-home-action");
+const importReuploadButton = document.querySelector("#import-reupload");
 
 document.querySelector("#new-project").addEventListener("click", () => showView("new"));
+document
+  .querySelectorAll('[data-action="new"]')
+  .forEach((button) => button.addEventListener("click", () => showView("new")));
 document
   .querySelectorAll('[data-action="home"]')
   .forEach((button) => button.addEventListener("click", showHome));
@@ -73,12 +147,279 @@ saveButton.addEventListener("click", saveCurrentProject);
 exportHtmlButton.addEventListener("click", () => void exportCurrentProject("html"));
 exportPdfButton.addEventListener("click", () => void exportCurrentProject("pdf"));
 textContent.addEventListener("input", () => state.editor?.updateTextContent(textContent.value));
+fontFamily.addEventListener("change", () => setTypography("font-family", fontFamily.value));
 fontSize.addEventListener("input", () => state.editor?.updateTextStyle("font-size", fontSize.value + "px"));
+fontWeight.addEventListener("change", () => setTypography("font-weight", fontWeight.value));
 textColor.addEventListener("input", () => state.editor?.updateTextStyle("color", textColor.value));
+letterSpacing.addEventListener("input", () => {
+  if (letterSpacing.value === "") return;
+  state.editor?.updateTextStyle("letter-spacing", letterSpacing.value + "px");
+});
 lineHeight.addEventListener("input", () => state.editor?.updateTextStyle("line-height", lineHeight.value));
 alignmentButtons.forEach((button) =>
   button.addEventListener("click", () => state.editor?.updateTextStyle("text-align", button.dataset.align)),
 );
+replaceImageButton.addEventListener("click", () => imageFileInput.click());
+imageFileInput.addEventListener("change", () => void replaceSelectedImageFromFile());
+copyElementButton.addEventListener("click", () => state.editor?.copySelection());
+deleteElementButton.addEventListener("click", () => state.editor?.deleteSelection());
+
+importEntry.addEventListener("click", openImportDialog);
+importDropzone.addEventListener("click", () => importFileInput.click());
+importFileInput.addEventListener("change", () => {
+  setPendingImportFile(importFileInput.files[0]);
+});
+importFileRemove.addEventListener("click", () => {
+  importFileInput.value = "";
+  clearPendingImportFile();
+});
+importCloseButton.addEventListener("click", closeImportDialog);
+importCancelButton.addEventListener("click", closeImportDialog);
+importDialog.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  closeImportDialog();
+});
+importStartButton.addEventListener("click", () => void startImport());
+importOpenProjectButton.addEventListener("click", () => {
+  const projectId = importOpenProjectButton.dataset.projectId;
+  if (projectId) void openProject(projectId);
+});
+importReuploadButton.addEventListener("click", openImportDialog);
+importViewOriginalButton.addEventListener("click", viewOriginalImportFile);
+["dragenter", "dragover"].forEach((type) =>
+  importDropzone.addEventListener(type, (event) => {
+    event.preventDefault();
+    importDropzone.classList.add("is-dragover");
+  }),
+);
+["dragleave", "drop"].forEach((type) =>
+  importDropzone.addEventListener(type, () => importDropzone.classList.remove("is-dragover")),
+);
+importDropzone.addEventListener("drop", (event) => {
+  event.preventDefault();
+  const file = event.dataTransfer?.files?.[0];
+  if (!file) return;
+  importFileInput.value = "";
+  setPendingImportFile(file);
+});
+
+function openImportDialog() {
+  importFileInput.value = "";
+  clearPendingImportFile();
+  importDialog.showModal();
+}
+
+function closeImportDialog() {
+  if (importDialog.open) importDialog.close();
+  syncViewOriginalVisibility();
+}
+
+function syncViewOriginalVisibility() {
+  importViewOriginalButton.hidden = !state.reportedImportFile;
+}
+
+function viewOriginalImportFile() {
+  const file = state.reportedImportFile;
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  window.open(url, "_blank");
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+function setPendingImportFile(file) {
+  if (!file) return;
+  state.pendingImportFile = file;
+  importFileName.textContent = file.name;
+  importFileMeta.textContent =
+    formatFileSize(file.size) + " · 单文件" + (/\.html?$/i.test(file.name) ? " · 自包含" : "");
+  importFileRow.hidden = false;
+  importStartButton.disabled = false;
+}
+
+function clearPendingImportFile() {
+  state.pendingImportFile = null;
+  importFileRow.hidden = true;
+  importStartButton.disabled = true;
+}
+
+async function startImport() {
+  const file = state.pendingImportFile;
+  if (!file) return;
+  importStartButton.disabled = true;
+  try {
+    const response = await fetch("/api/imports?filename=" + encodeURIComponent(file.name), {
+      method: "POST",
+      headers: { "Content-Type": "text/html" },
+      body: file,
+    });
+    const payload = await response.json().catch(() => ({}));
+    const report = payload.report || payload.project?.importReport;
+    if (report) {
+      closeImportDialog();
+      showImportReport(report, payload.project || null);
+      if (payload.project) await loadProjects();
+      return;
+    }
+    throw new Error(payload.error || "导入检查没有完成。");
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    importStartButton.disabled = !state.pendingImportFile;
+  }
+}
+
+const RULE_STATE_CLASSES = { pass: "is-pass", warn: "is-warn", fail: "is-fail" };
+const RULE_STATE_MARKS = { pass: "✓", warn: "!", fail: "×" };
+const RULE_STATE_BADGES = { pass: "通过", warn: "锁定", fail: "未通过" };
+const LOCK_MARK_SVG =
+  '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>';
+
+function ruleStateOf(status) {
+  return status === "pass" || status === "warn" ? status : "fail";
+}
+
+function showImportReport(report, project) {
+  const displayName = String(report.file?.name || "导入演示").replace(/\.html?$/i, "");
+  const unsupported = report.verdict === "暂不支持";
+  const partial = report.verdict === "部分可编辑";
+  state.reportedImportFile = state.pendingImportFile;
+  importReportTitle.textContent = displayName;
+  importVerdict.textContent = report.verdict;
+  importVerdict.className = "verdict-pill " + (VERDICT_CLASSES[report.verdict] || "");
+  importReportNote.textContent = unsupported ? "检查完成 · 未创建项目" : "检查完成 · 未修改原文件";
+  importReportFileName.textContent = report.file?.name || "";
+  importReportFileMeta.textContent = importFileMetaText(report);
+  syncViewOriginalVisibility();
+  renderImportRuleList(report, unsupported, partial);
+  renderImportContentGroups(report, partial);
+  if (unsupported) {
+    importReportStatus.textContent = "原文件未做任何修改，也没有创建演示项目。";
+    importReportStatus.className = "import-report-status is-plain";
+    importHomeAction.hidden = false;
+    importReuploadButton.hidden = false;
+    importReuploadButton.className = "button-dark";
+    setImportOpenProject(null);
+  } else if (partial) {
+    importReportStatus.textContent = "锁定内容在编辑画布中点击时会提示「已锁定：这个元素不可编辑」";
+    importReportStatus.className = "import-report-status is-warn";
+    importHomeAction.hidden = true;
+    importReuploadButton.hidden = false;
+    importReuploadButton.className = "text-button";
+    setImportOpenProject(project, "仍要进入编辑");
+  } else {
+    importReportStatus.textContent = "已创建演示项目「" + project.name + "」";
+    importReportStatus.className = "import-report-status";
+    importHomeAction.hidden = false;
+    importReuploadButton.hidden = true;
+    setImportOpenProject(project, "进入编辑");
+  }
+  showView("import-report");
+}
+
+function setImportOpenProject(project, label) {
+  if (!project) {
+    importOpenProjectButton.hidden = true;
+    delete importOpenProjectButton.dataset.projectId;
+    return;
+  }
+  importOpenProjectButton.hidden = false;
+  importOpenProjectButton.textContent = label;
+  importOpenProjectButton.dataset.projectId = project.id;
+}
+
+function renderImportRuleList(report, unsupported, partial) {
+  if (partial) {
+    importRules.hidden = true;
+    importRules.replaceChildren();
+    return;
+  }
+  const rules = unsupported ? report.rules.filter((rule) => rule.status === "fail") : report.rules;
+  importRules.hidden = false;
+  importRules.replaceChildren(...rules.map((rule) => importRuleItem(rule, unsupported)));
+}
+
+function importRuleItem(rule, failedRulesAreReasons) {
+  const ruleState = ruleStateOf(rule.status);
+  const stateClass = RULE_STATE_CLASSES[ruleState];
+  return importRuleRow({
+    markClass: stateClass,
+    markContent: RULE_STATE_MARKS[ruleState],
+    title: rule.title,
+    detail: rule.detail,
+    badgeClass: stateClass,
+    badgeText: ruleState === "fail" && failedRulesAreReasons ? "原因" : RULE_STATE_BADGES[ruleState],
+  });
+}
+
+function renderImportContentGroups(report, partial) {
+  importContentGroups.hidden = !partial;
+  if (!partial) return;
+  const editableRows = (report.editableContent || []).filter((item) => Number(item.count) > 0);
+  importEditableGroup.hidden = editableRows.length === 0;
+  importEditableCount.textContent = editableRows.length + " 类";
+  importEditableList.replaceChildren(...editableRows.map((item) => inventoryItem(item, "editable")));
+  const lockedRows = report.lockedElements || [];
+  importLockedGroup.hidden = lockedRows.length === 0;
+  importLockedCount.textContent = lockedRows.length + " 类";
+  importLockedList.replaceChildren(...lockedRows.map((item) => inventoryItem(item, "lock")));
+}
+
+function inventoryItem(item, kind) {
+  const editable = kind === "editable";
+  return importRuleRow({
+    markClass: editable ? "is-pass" : "is-lock",
+    markContent: editable ? "✓" : LOCK_MARK_SVG,
+    title: item.category + " " + Number(item.count) + " " + (editable && item.category === "可编辑图片" ? "张" : "处"),
+    detail: editable ? item.note : item.reason,
+    badgeClass: editable ? "is-pass" : "is-lock",
+    badgeText: editable ? "可编辑" : "锁定",
+  });
+}
+
+function importRuleRow({ markClass, markContent, title, detail, badgeClass, badgeText }) {
+  const item = document.createElement("li");
+  item.className = "import-rule";
+  item.innerHTML =
+    '<span class="rule-mark ' +
+    markClass +
+    '" aria-hidden="true">' +
+    markContent +
+    '</span><div class="rule-copy"><strong>' +
+    escapeHtml(title) +
+    "</strong><small>" +
+    escapeHtml(detail || "") +
+    '</small></div><span class="rule-badge ' +
+    badgeClass +
+    '">' +
+    badgeText +
+    "</span>";
+  return item;
+}
+
+function importFileMetaText(report) {
+  const parts = [formatFileSize(report.file?.size || 0)];
+  if (report.slideCount) parts.push(Number(report.slideCount) + " 页");
+  const imageRow = (report.editableContent || []).find((item) => item.category === "可编辑图片");
+  if (imageRow && Number(imageRow.count) > 0) parts.push(Number(imageRow.count) + " 张图片");
+  parts.push(checkedAtText(report.checkedAt));
+  return parts.join(" · ");
+}
+
+function checkedAtText(value) {
+  const checkedAt = new Date(value);
+  if (Number.isNaN(checkedAt.getTime())) return "刚刚检查";
+  const minutes = Math.floor((Date.now() - checkedAt.getTime()) / 60000);
+  if (minutes < 1) return "刚刚检查";
+  if (minutes < 60) return minutes + " 分钟前检查";
+  return new Intl.DateTimeFormat("zh-CN", { dateStyle: "short", timeStyle: "short" }).format(checkedAt) + " 检查";
+}
+
+function formatFileSize(size) {
+  const bytes = Number(size) || 0;
+  if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1).replace(/\.0$/, "") + " MB";
+  if (bytes >= 1024) return (bytes / 1024).toFixed(1).replace(/\.0$/, "") + " KB";
+  return bytes + " B";
+}
 
 await Promise.all([loadTemplates(), loadProjects()]);
 showView("home");
@@ -90,7 +431,7 @@ async function loadTemplates() {
   list.replaceChildren(
     ...state.templates.map((template, index) => {
       const label = document.createElement("label");
-      label.className = "template-option";
+      label.className = "template-option template-option--" + escapeHtml(template.id);
       label.innerHTML =
         '<input type="radio" name="template" value="' +
         escapeHtml(template.id) +
@@ -129,28 +470,36 @@ async function loadProjects() {
 function renderProjects() {
   const list = document.querySelector("#project-list");
   const empty = document.querySelector("#empty-projects");
+  const count = document.querySelector("#project-count");
   list.replaceChildren(
-    ...state.projects.map((project, index) => {
+    ...state.projects.map((project) => {
       const article = document.createElement("article");
       article.className = "project-card";
       article.setAttribute("aria-label", project.name);
       article.tabIndex = 0;
+      const coverClass =
+        project.sourceType === "imported"
+          ? "import"
+          : TEMPLATE_COVER_CLASSES[project.templateName] || "";
+      const statusClass = STATUS_CLASSES[project.status] || "";
       article.innerHTML =
-        '<div class="project-number">' +
-        String(index + 1).padStart(2, "0") +
-        "</div><div>" +
-        '<p class="project-template">' +
+        '<div class="project-cover project-cover--' +
+        coverClass +
+        '" aria-hidden="true"><span class="cover-badge">' +
         escapeHtml(project.templateName) +
-        "</p><h3>" +
+        '</span></div><div class="project-body"><div class="project-title-row"><h3>' +
         escapeHtml(project.name) +
-        '</h3><p class="project-meta">最后修改 ' +
+        '</h3><button class="project-delete" type="button" aria-label="删除项目 ' +
+        escapeHtml(project.name) +
+        '">删除</button></div><div class="project-info-row"><p class="project-meta">' +
+        escapeHtml(project.templateName) +
+        " · 最后修改 " +
         formatDate(project.updatedAt) +
-        '</p></div><span class="project-status">' +
+        '</p><span class="project-status project-status--' +
+        statusClass +
+        '">' +
         escapeHtml(project.status) +
-        "</span>" +
-        '<button class="project-delete" type="button" aria-label="删除项目 ' +
-        escapeHtml(project.name) +
-        '">删除</button>';
+        "</span></div></div>";
       article.addEventListener("click", () => openProject(project.id));
       article.querySelector(".project-delete").addEventListener("click", (event) => {
         event.stopPropagation();
@@ -167,6 +516,7 @@ function renderProjects() {
     }),
   );
   empty.hidden = state.projects.length > 0;
+  count.textContent = state.projects.length + " 个项目";
 }
 async function openProject(projectId) {
   const response = await fetch("/api/projects/" + encodeURIComponent(projectId));
@@ -407,6 +757,8 @@ function openPreview(project) {
   resetEditor();
   state.currentProject = project;
   document.querySelector("#preview-title").textContent = project.name;
+  document.querySelector("#preview-template-label").textContent = "安全预览 · " + project.templateName;
+  regenerateButton.hidden = project.sourceType === "imported";
   const frame = document.querySelector('iframe[title="演示文稿预览"]');
   frame.srcdoc = project.html;
   setMode("preview");
@@ -421,6 +773,13 @@ async function showHome() {
 function showView(name) {
   Object.entries(views).forEach(([key, view]) => {
     view.hidden = key !== name;
+  });
+  document.querySelectorAll(".sidebar-nav .nav-item").forEach((item) => {
+    const action = item.dataset.action;
+    const active = (name === "home" && action === "home") || (name === "new" && action === "new");
+    item.classList.toggle("is-active", active);
+    if (active) item.setAttribute("aria-current", "page");
+    else item.removeAttribute("aria-current");
   });
   if (name === "new") source.focus();
 }
@@ -456,6 +815,33 @@ function setMode(mode) {
 }
 
 
+function setTypography(property, value) {
+  if (value === "") state.editor?.clearTextStyle(property);
+  else state.editor?.updateTextStyle(property, value);
+}
+
+async function replaceSelectedImageFromFile() {
+  const file = imageFileInput.files[0];
+  imageFileInput.value = "";
+  if (!file) return;
+  if (!state.editor) {
+    showToast("请先选中要替换的图片");
+    return;
+  }
+  try {
+    const dataUrl = await readLocalImageAsDataUrl(file);
+    if (!state.editor.replaceSelectedImage(dataUrl)) showToast("请先选中要替换的图片");
+  } catch {
+    showToast("图片读取失败");
+  }
+}
+
+function populateTypographyOptions() {
+  fontFamily.replaceChildren(...FONT_OPTIONS.map((option) => new Option(option.label, option.value)));
+  fontWeight.replaceChildren(...FONT_WEIGHT_OPTIONS.map((option) => new Option(option.label, option.value)));
+}
+populateTypographyOptions();
+
 async function ensureEditor() {
   if (state.editor && state.editorProjectId === state.currentProject.id) return;
   resetEditor();
@@ -464,18 +850,33 @@ async function ensureEditor() {
     container: editorContainer,
     project: state.currentProject,
     onSelection({ kind, text }) {
+      lockedHint.hidden = true;
       if (kind === "text") {
         selectionStatus.textContent = "已选中文字";
+        textControls.hidden = false;
         textControls.disabled = false;
+        imageControls.hidden = true;
         syncTextControls(text);
-      } else {
+      } else if (kind === "image") {
         selectionStatus.textContent = "已选中普通内容图片";
+        textControls.hidden = true;
         textControls.disabled = true;
+        imageControls.hidden = false;
+      } else {
+        selectionStatus.textContent = "点击画布中的文字或普通内容图片";
+        textControls.hidden = false;
+        textControls.disabled = true;
+        imageControls.hidden = true;
       }
+      elementActions.hidden = kind !== "text" && kind !== "image";
     },
     onLocked() {
       selectionStatus.textContent = "已锁定：这个元素不可编辑";
+      textControls.hidden = true;
       textControls.disabled = true;
+      imageControls.hidden = true;
+      lockedHint.hidden = false;
+      elementActions.hidden = true;
       showToast("这个元素不可编辑");
     },
     onHistoryChange: updateHistoryButtons,
@@ -485,8 +886,11 @@ async function ensureEditor() {
 }
 function syncTextControls(text) {
   textContent.value = text.content;
+  fontFamily.value = matchFontFamilyOption(text.fontFamily);
   fontSize.value = String(text.fontSize);
+  fontWeight.value = matchFontWeightOption(text.fontWeight);
   textColor.value = text.color;
+  letterSpacing.value = String(text.letterSpacing);
   lineHeight.value = String(text.lineHeight);
   alignmentButtons.forEach((button) =>
     button.setAttribute("aria-pressed", String(button.dataset.align === text.textAlign)),
@@ -513,7 +917,11 @@ function resetEditor() {
   if (state.editor) state.editor.destroy();
   state.editor = null;
   state.editorProjectId = null;
+  textControls.hidden = false;
   textControls.disabled = true;
+  imageControls.hidden = true;
+  lockedHint.hidden = true;
+  elementActions.hidden = true;
   updateHistoryButtons();
   updateEditorNavigation();
 }
