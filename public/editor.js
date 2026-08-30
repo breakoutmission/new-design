@@ -1,6 +1,13 @@
 import grapesjs from "/vendor/grapesjs/grapes.mjs";
 import { repairImageSrcProps, syncImportedImageMarks, toLetterSpacingPx } from "./editor-controls.js";
 import { clamp, copyComponentAdjacent } from "./element-operations.js";
+import {
+  PLACEHOLDER_ATTRIBUTE,
+  beginTextBoxDrag,
+  commitTextBoxDrag,
+  moveTextBoxDrag,
+  restoreInlineTextBoxStyle,
+} from "./textbox-drag.js";
 
 const EDITABLE_TEXT_SELECTOR = "[data-editable-text], h1, h2, h3, h4, h5, h6, p";
 const IMAGE_STYLE_KEYS = ["position", "left", "top", "right", "bottom", "width", "height"];
@@ -38,7 +45,15 @@ export async function mountPresentationEditor({
   editorSupportStyle.setAttribute("data-aps-editor-support", "true");
   editorSupportStyle.textContent = [
     '[data-aps-selected="true"]{outline:4px solid #c25545!important;outline-offset:3px!important;}',
+    '[data-aps-selected="true"]{cursor:move!important;}',
     "[data-anim]{opacity:1!important;animation:none!important;}",
+    // 原位留白占位盒只在编辑画布显示虚线与标注；样式不入项目数据，预览与导出不可见。
+    "[" +
+      PLACEHOLDER_ATTRIBUTE +
+      '="true"]{outline:2px dashed #8f8a7a!important;outline-offset:-2px!important;}',
+    "[" +
+      PLACEHOLDER_ATTRIBUTE +
+      '="true"]:empty::after{content:"原位置留白";display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:#8f8a7a;font:400 14px/1 sans-serif;}',
   ].join("");
   frameDocument.head.append(editorSupportStyle);
 
@@ -47,6 +62,7 @@ export async function mountPresentationEditor({
   let selectedComponent = null;
   let selectedKind = null;
   let interaction = null;
+  let textInteraction = null;
 
   const hostDocument = container.ownerDocument;
   const handleLayer = createHandleLayer(hostDocument);
@@ -414,6 +430,69 @@ export async function mountPresentationEditor({
   hostDocument.addEventListener("pointerdown", beginImageInteraction, true);
   hostDocument.addEventListener("pointermove", moveImageInteraction, true);
   hostDocument.addEventListener("pointerup", finishImageInteraction, true);
+
+  // 宿主也接收自身 UI 的 pointer 事件：画布内事件的 target 属于画布
+  // frame 文档（同源 iframe 事件沿路径传播），宿主按钮的 target 属于宿主文档。
+  // 只放行画布来源事件，避免宿主按钮坐标与画布内元素 rect 数值巧合重叠时
+  // 发生幻影拖拽。
+  const isCanvasPointerEvent = (event) =>
+    event.target === frame || event.target?.ownerDocument === frameDocument;
+
+  const beginTextInteraction = (event) => {
+    if (selectedKind !== "text" || !selectedComponent) return;
+    if (!isCanvasPointerEvent(event) || textInteraction) return;
+    const element = selectedComponent.getEl();
+    if (!element) return;
+    const started = beginTextBoxDrag(selectedComponent, element, event);
+    if (!started) return;
+    started.captureTarget = event.target instanceof Element ? event.target : null;
+    started.captureTarget?.setPointerCapture?.(event.pointerId);
+    textInteraction = started;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+
+  const moveTextInteraction = (event) => {
+    if (!textInteraction) return;
+    moveTextBoxDrag(textInteraction, event);
+    event.preventDefault();
+  };
+
+  const finishTextInteraction = (event) => {
+    if (!textInteraction) return;
+    const completed = textInteraction;
+    textInteraction = null;
+    if (completed.captureTarget?.hasPointerCapture?.(event.pointerId)) {
+      completed.captureTarget.releasePointerCapture(event.pointerId);
+    }
+
+    restoreInlineTextBoxStyle(completed.element, completed.originalInline);
+    if (completed.changed && completed.finalBox) {
+      commitTextBoxDrag(completed, completed.finalBox);
+      selectedComponent = completed.component;
+      selectedKind = "text";
+      markSelected();
+      notifyHistory();
+    }
+    event.preventDefault();
+  };
+
+  // pointercancel 只恢复不提交：中断的拖拽不得改写文档。
+  // 画布内的 pointercancel 引擎不转发（仅转发 down/move/up），此处兜住宿主侧中断。
+  const cancelTextInteraction = (event) => {
+    if (!textInteraction) return;
+    const completed = textInteraction;
+    textInteraction = null;
+    if (completed.captureTarget?.hasPointerCapture?.(event.pointerId)) {
+      completed.captureTarget.releasePointerCapture(event.pointerId);
+    }
+    restoreInlineTextBoxStyle(completed.element, completed.originalInline);
+  };
+
+  hostDocument.addEventListener("pointerdown", beginTextInteraction, true);
+  hostDocument.addEventListener("pointermove", moveTextInteraction, true);
+  hostDocument.addEventListener("pointerup", finishTextInteraction, true);
+  hostDocument.addEventListener("pointercancel", cancelTextInteraction, true);
   frameWindow.addEventListener("resize", updateImageHandles);
   editor.on("component:selected", handleSelected);
   editor.UndoManager.clear();
@@ -456,6 +535,10 @@ export async function mountPresentationEditor({
       hostDocument.removeEventListener("pointerdown", beginImageInteraction, true);
       hostDocument.removeEventListener("pointermove", moveImageInteraction, true);
       hostDocument.removeEventListener("pointerup", finishImageInteraction, true);
+      hostDocument.removeEventListener("pointerdown", beginTextInteraction, true);
+      hostDocument.removeEventListener("pointermove", moveTextInteraction, true);
+      hostDocument.removeEventListener("pointerup", finishTextInteraction, true);
+      hostDocument.removeEventListener("pointercancel", cancelTextInteraction, true);
       frameWindow.removeEventListener("resize", updateImageHandles);
       editor.off("component:selected", handleSelected);
       handleLayer.remove();
