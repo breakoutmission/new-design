@@ -24,8 +24,8 @@ file-type → file-size → file-integrity
 
 | 优先级 | 规则 id | 启发式 | 正例固定样本 | 反例固定样本 |
 | --- | --- | --- | --- | --- |
-| 1 | `slide-class-token` | class 含独立词元 `slide`（以空格 / 连字符 / 下划线为边界）的容器各为一页 | B1 正例：`<section class="slide">` ×3 → 3 页 | B1 反例：`class="slideshow"`（无词元边界）不识别 |
-| 2 | `page-class-token` | class 含独立词元 `page` 的容器各为一页，并补 `slide` 语义类 | B2 正例：`<section class="page">` ×2 → 2 页 | B2 反例：`class="homepage-link"` 不识别 |
+| 1 | `slide-class-token` | class 含页面语义词元的容器各为一页：完整词 `slide` 或 `slide + 分隔符 + 纯数字`（`slide-1`、`slide_02`）；`slide-content`、`slide-chrome`、`slide-counter`、`chart-slide-layout` 等页内复合类名不算页（#21 真实样本修订，B7–B9） | B1 正例：`<section class="slide">` ×3 → 3 页；B7 正例：`class="slide-1"` 等 | B1 反例：`class="slideshow"`（无词元边界）不识别；B8 反例：`class="slide-content"` / `class="slide-counter"` / `class="chart-slide-layout"` 不识别 |
+| 2 | `page-class-token` | class 含页面语义词元 `page`（同上口径）的容器各为一页，并补 `slide` 语义类 | B2 正例：`<section class="page">` ×2 → 2 页 | B2 反例：`class="homepage-link"` 不识别 |
 | 3 | `page-data-attribute` | 带 `data-slide` / `data-page` 属性的容器各为一页，并补 `slide` 语义类 | B3 正例：`<section data-slide="1">` ×2 → 2 页 | B3 反例：`data-slider-id` 不识别 |
 | 4 | `sibling-sections` | 两个以上并列 `<section>` 区块各为一页，并补 `slide` 语义类 | B4 正例：3 个裸 `<section>` → 3 页 | B4 反例：并列 `<article>` 不识别 |
 | 5 | `single-fullscreen-section` | 全文唯一 `<section>` 且样式声明全屏尺寸（`height/min-height: 100vh|100%`）时回退为单页 | B5 正例：唯一 `<section style="min-height:100vh">` → 1 页 | B5 反例：单个普通 `<article>`（无全屏尺寸）不识别 |
@@ -85,7 +85,15 @@ file-type → file-size → file-integrity
 
 - 页面识别与锁定 / 盘点为正则级启发式（非 DOM 解析）：同名标签嵌套（如 `<li>` 套 `<li>`）按最近闭合近似计数，可能低估；判断以固定样本集通过为准。
 - 畸形检测覆盖未闭合脚本标签、未闭合注释与缺必要骨架；不做完整标签配对校验。
-- 兼容性声明不承诺覆盖所有 AI 工具输出；真实外部样本验收属 #21。
+- 兼容性声明不承诺覆盖所有 AI 工具输出；真实外部样本验收已完成（#21，样本集见 `fixtures/import-samples/`，回放用例见 `tests/import-checker.mjs` J 组与 `tests/browser/issue-21-real-samples.mjs`）。
+
+## 真实样本修订（Issue #21）
+
+真实样本集（`fixtures/import-samples/`）暴露了页面识别词元规则的一个系统性误判，已按 TDD 修订（用例 B7–B9，报告契约零改动）：
+
+- **现象**：按「空格 / 连字符 / 下划线为边界」匹配 `slide` 词元时，真实外部样本里的页内复合类名也被当成页面——studio.html 把 `slide-chrome` / `slide-body` / `slide-foot` 各 5 处计入页数（误报 27 页，实际 12 页）；8-bit-orbit.html 把 `slide-content` ×10、`slide-counter` ×1、`chart-slide-layout` ×2 计入（误报 23 页，实际 10 页）。误判不只影响报告页数：这些页内元素会被补上 `slide` 语义类，导出页码徽章错挂、PDF 分页多出碎片页、编辑器翻页标记失真。
+- **修订**：页面语义词元收紧为「完整词 `slide` / `page`」或「词元 + 分隔符 + 纯数字的页面编号（`slide-1`、`slide_02`）」；复合名词（`slide-content` 等）不再算页。共享谓词 `isSlidePageClass` 同步用于导出侧 `countSlides` 与静态翻页徽章注入，保证报告页数、导出徽章与 PDF 分页三方一致。
+- **代价**：只以 `slide--cover` 这类「slide + 分隔符 + 单词」复合类名标记页面、且没有完整词 `slide` 的版式，现在会判「无法识别演示页面」（原先是误判页数）；样本集与既有用例中无此形态，记为已知取舍。
 
 ## 契约扩展记录（Issue #15，向后兼容）
 

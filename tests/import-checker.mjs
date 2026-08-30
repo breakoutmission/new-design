@@ -3,6 +3,9 @@
 // 页面识别规则表见 src/import-checker.mjs 与 docs/import-checker-rules.md，
 // 本文件中每条页面识别规则至少一个正例与一个反例固定样本。
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   IMPORT_MAX_BYTES,
   VERDICT_FULL,
@@ -210,6 +213,48 @@ test("B6 规则按优先级执行：page 类名优先于 data-slide 属性", () 
 test("B6 优先级：slide 类名优先于 page 类名，同一元素只计一次", () => {
   const result = check(doc('<section class="slide page"><h1>一</h1></section>'));
   assert.equal(result.report.slideCount, 1);
+});
+
+// #21 真实样本修订：页内复合类名（slide-1 / slide_01 这类「slide + 纯数字」是
+// 页面标记；slide-content / slide-chrome / slide-counter / chart-slide-layout
+// 这类复合名词是页内部件）不得识别为页面。反例来自真实外部样本
+// 8-bit-orbit.html（slide-content ×10、slide-counter ×1、chart-slide-layout ×2）
+// 与 studio.html（slide-chrome / slide-body / slide-foot 各 ×5）。
+test("B7 正例：slide + 纯数字复合类名识别为页面", () => {
+  const result = check(
+    doc(
+      '<section class="slide-1"><h1>一</h1></section>' +
+        '<section class="slide_02"><h1>二</h1></section>' +
+        '<section class="slide-3 intro"><h1>三</h1></section>',
+    ),
+  );
+  assert.equal(result.report.slideCount, 3);
+});
+
+test("B8 反例：slide-content 等页内复合类名不识别为页面", () => {
+  const result = check(
+    doc(
+      '<div class="slide-counter">01 / 02</div>' +
+        '<section><div class="slide-content"><h1>页内内容块</h1></div></section>' +
+        '<div class="chart-slide-layout"><h1>图表布局</h1></div>',
+    ),
+  );
+  assert.equal(result.report.slideCount, 0, "页内复合类名不是页面标记");
+  assert.equal(ruleOf(result, "page-structure").status, "fail");
+  assert.equal(result.verdict, VERDICT_UNSUPPORTED);
+});
+
+test("B9 真实样本形态：真实页与页内复合类名混合时只计真实页", () => {
+  const realPages =
+    '<section class="slide bg-grid scanlines"><h1>一</h1></section>' +
+    '<section class="slide bg-grid-cyan"><h1>二</h1></section>';
+  const innerCompounds =
+    '<div class="slide-counter">01 / 02</div>' +
+    Array.from({ length: 10 }, (_, index) => '<div class="slide-content"><p>内容 ' + index + "</p></div>").join("");
+  const result = check(doc(realPages + innerCompounds));
+  assert.equal(result.report.slideCount, 2, "只有真实页面计入页数");
+  assert.match(result.html, /class="slide bg-grid scanlines"/, "真实页类名保持不变");
+  assert.ok(!/class="slide-content slide"/.test(result.html), "页内复合类名不得被补上 slide 语义类");
 });
 
 // ---------------------------------------------------------------------------
@@ -538,4 +583,104 @@ test("I1 editableContent 的能力说明与编辑面板当前能力一致", () =
   );
   assert.equal(byCategory["可编辑图片"].note, "可拖动位置、四角等比例缩放和替换图片内容");
 });
+
+// ---------------------------------------------------------------------------
+// J. 真实样本集回放（#21 收尾）：fixtures/import-samples/ 的固定样本逐一
+// 过检查器，锁定真实外部 AI 生成样本与本产品导出样本的判定档位与关键报告
+// 数据。样本出处、许可与判定记录见 fixtures/import-samples/README.md；
+// 对外兼容性声明以该样本集通过为准（Spec #13）。
+// ---------------------------------------------------------------------------
+
+const realSamplesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "import-samples");
+
+function checkRealSample(fileName) {
+  const source = readFileSync(path.join(realSamplesDir, fileName), "utf8");
+  return runImportCheck({
+    fileName,
+    fileSize: Buffer.byteLength(source, "utf8"),
+    html: source,
+  });
+}
+
+function lockCategoriesOf(result) {
+  return result.report.lockedElements.map((item) => [item.category, item.count]);
+}
+
+const realSampleExpectations = [
+  {
+    fileName: "AI 演示工作流.html",
+    verdict: VERDICT_PARTIAL,
+    slideCount: 3,
+    scriptCount: 1,
+    animationCount: 6,
+    locked: [
+      ["SVG 装饰图形", 1],
+      ["页眉 Logo", 1],
+    ],
+    editableText: 5,
+    editableImages: 1,
+  },
+  {
+    fileName: "studio.html",
+    verdict: VERDICT_FULL,
+    slideCount: 12,
+    animationCount: 22,
+    locked: [],
+    editableText: 36,
+    editableImages: 0,
+  },
+  {
+    fileName: "cobalt-grid.html",
+    verdict: VERDICT_PARTIAL,
+    slideCount: 8,
+    locked: [
+      ["SVG 装饰图形", 5],
+      ["背景渐变", 1],
+    ],
+    editableText: 18,
+    editableImages: 0,
+  },
+  {
+    fileName: "8-bit-orbit.html",
+    verdict: VERDICT_PARTIAL,
+    slideCount: 10,
+    locked: [
+      ["背景渐变", 8],
+      ["背景图", 1],
+      ["脚本动效", 2],
+    ],
+    editableText: 46,
+    editableImages: 0,
+  },
+  {
+    fileName: "retro-windows.html",
+    verdict: VERDICT_UNSUPPORTED,
+    failRule: "restricted-embeds",
+    failDetailPattern: /Canvas/,
+  },
+];
+
+for (const expectation of realSampleExpectations) {
+  test("J 真实样本回放：" + expectation.fileName + " 判定为「" + expectation.verdict + "」", async () => {
+    const result = checkRealSample(expectation.fileName);
+    assert.equal(result.verdict, expectation.verdict);
+    assert.equal(result.passed, expectation.verdict !== VERDICT_UNSUPPORTED);
+    if (expectation.verdict === VERDICT_UNSUPPORTED) {
+      assert.equal(result.html, null, "暂不支持样本不得返回处理后 HTML");
+      const failRule = result.report.rules.find((rule) => rule.id === expectation.failRule);
+      assert.equal(failRule.status, "fail");
+      assert.match(failRule.detail, expectation.failDetailPattern);
+      return;
+    }
+    assert.ok(result.html && result.html.length > 0, "通过档位必须返回处理后 HTML");
+    if (expectation.slideCount !== undefined) assert.equal(result.report.slideCount, expectation.slideCount);
+    if (expectation.scriptCount !== undefined) assert.equal(result.report.scriptCount, expectation.scriptCount);
+    if (expectation.animationCount !== undefined) assert.equal(result.report.animationCount, expectation.animationCount);
+    assert.deepEqual(lockCategoriesOf(result), expectation.locked, "锁定类别与数量必须与样本判定记录一致");
+    const editable = Object.fromEntries(result.report.editableContent.map((item) => [item.category, item.count]));
+    assert.equal(editable["可编辑文字"], expectation.editableText);
+    assert.equal(editable["可编辑图片"], expectation.editableImages);
+    assert.ok(!/<script\b/i.test(result.html), "处理后副本不得残留脚本");
+  });
+}
 

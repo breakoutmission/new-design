@@ -31,10 +31,27 @@ const EMPTY_COMMENT_PATTERN = /<!--(?:-?)>/g;
 const INLINE_STYLE_DOUBLE_PATTERN = /\sstyle\s*=\s*"([^"]*)"/gi;
 const INLINE_STYLE_SINGLE_PATTERN = /\sstyle\s*=\s*'([^']*)'/gi;
 
-// 页面识别词元：slide / page 必须是独立的类名词（以空格、连字符、下划线或边界分隔），
-// 避免 slideshow、homepage 之类的普通词误判。
-const SLIDE_CLASS_TOKEN = /(?:^|[-_\s])slide(?:[-_\s]|$)/i;
-const PAGE_CLASS_TOKEN = /(?:^|[-_\s])page(?:[-_\s]|$)/i;
+// 页面识别词元（#21 真实样本修订）：完整词「slide」/「page」，或「词元 + 分隔符 +
+// 纯数字」的页面编号（slide-1、slide_02）。slide-content、slide-chrome、
+// slide-counter、chart-slide-layout 这类复合名词是页内部件，不是页面标记——
+// 真实外部样本（8-bit-orbit、studio）显示按连字符边界匹配会把页内部件误判为页。
+const SLIDE_TOKEN_CLASS_PATTERN = /^(?:slide)(?:[-_]{0,2}\d+)?$/i;
+const PAGE_TOKEN_CLASS_PATTERN = /^(?:page)(?:[-_]{0,2}\d+)?$/i;
+const EXACT_SLIDE_TOKEN = (token) => token.toLowerCase() === "slide";
+
+// 供服务端导出分页（injectStaticPaging / countSlides）与检查器共用同一页面口径。
+export function isSlideTokenClass(classValue) {
+  return String(classValue)
+    .split(/\s+/)
+    .some((token) => SLIDE_TOKEN_CLASS_PATTERN.test(token));
+}
+
+export function isPageTokenClass(classValue) {
+  return String(classValue)
+    .split(/\s+/)
+    .some((token) => PAGE_TOKEN_CLASS_PATTERN.test(token));
+}
+
 const DATA_PAGE_TAG_PATTERN = /<[a-z][\w-]*\b[^>]*?\sdata-(?:slide|page)\b[^>]*>/gi;
 const SECTION_TAG_PATTERN = /<section\b[^>]*>/gi;
 const FULLSCREEN_SIZE_PATTERN = /(?:min-)?height\s*:\s*(?:100vh|100%)\b/i;
@@ -268,20 +285,20 @@ export function prepareImportedHtml(html) {
 // 5. single-fullscreen-section：唯一 <section> 且样式声明全屏尺寸时回退为单页。
 // 全部失败则识别不出页面，判「暂不支持」。
 function identifyPages(html) {
-  const slideClassCount = countClassTokenElements(html, SLIDE_CLASS_TOKEN);
+  const slideClassCount = countClassTokenElements(html, isSlideTokenClass);
   if (slideClassCount > 0) {
     return {
       label: "slide 类名规则",
       slideCount: slideClassCount,
-      mark: { type: "class", token: SLIDE_CLASS_TOKEN },
+      mark: { type: "class", predicate: isSlideTokenClass },
     };
   }
-  const pageClassCount = countClassTokenElements(html, PAGE_CLASS_TOKEN);
+  const pageClassCount = countClassTokenElements(html, isPageTokenClass);
   if (pageClassCount > 0) {
     return {
       label: "page 类名规则",
       slideCount: pageClassCount,
-      mark: { type: "class", token: PAGE_CLASS_TOKEN },
+      mark: { type: "class", predicate: isPageTokenClass },
     };
   }
   const dataTagCount = (html.match(DATA_PAGE_TAG_PATTERN) || []).length;
@@ -310,22 +327,24 @@ function identifyPages(html) {
   return null;
 }
 
-function countClassTokenElements(html, token) {
+function countClassTokenElements(html, predicate) {
   let count = 0;
   for (const match of html.matchAll(CLASS_ATTRIBUTE_PATTERN)) {
     const value = match[1] ?? match[2] ?? "";
-    if (token.test(value)) count += 1;
+    if (predicate(value)) count += 1;
   }
   return count;
 }
 
 function markSlides(html, pages) {
   if (pages.mark.type === "class") {
-    const token = pages.mark.token;
+    const predicate = pages.mark.predicate;
     return html.replace(CLASS_ATTRIBUTE_PATTERN, (match, doubleQuoted, singleQuoted) => {
       const value = doubleQuoted ?? singleQuoted ?? "";
-      if (!token.test(value)) return match;
-      const hasSlide = SLIDE_CLASS_TOKEN.test(value);
+      if (!predicate(value)) return match;
+      const hasSlide = String(value)
+        .split(/\s+/)
+        .some((token) => EXACT_SLIDE_TOKEN(token));
       return 'class="' + (hasSlide ? value : value + " slide") + '"';
     });
   }
@@ -335,12 +354,12 @@ function markSlides(html, pages) {
 function addSlideClassToTag(tag) {
   const doubleQuote = tag.match(/\bclass\s*=\s*"([^"]*)"/);
   if (doubleQuote) {
-    if (SLIDE_CLASS_TOKEN.test(doubleQuote[1])) return tag;
+    if (doubleQuote[1].split(/\s+/).some((token) => EXACT_SLIDE_TOKEN(token))) return tag;
     return tag.replace(/\bclass\s*=\s*"[^"]*"/, 'class="' + doubleQuote[1] + ' slide"');
   }
   const singleQuote = tag.match(/\bclass\s*=\s*'([^']*)'/);
   if (singleQuote) {
-    if (SLIDE_CLASS_TOKEN.test(singleQuote[1])) return tag;
+    if (singleQuote[1].split(/\s+/).some((token) => EXACT_SLIDE_TOKEN(token))) return tag;
     return tag.replace(/\bclass\s*=\s*'[^']*'/, "class='" + singleQuote[1] + " slide'");
   }
   return tag.replace(/\s*\/?>$/, (ending) => ' class="slide"' + ending);
